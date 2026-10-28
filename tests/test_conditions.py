@@ -176,3 +176,22 @@ def test_direct_field_condition_model() -> None:
         '{"field": "attributes.x.count", "op": "equals", "value": 3}'
     )
     assert evaluate(condition, EVENT)
+
+
+def test_equals_and_in_normalize_list_values() -> None:
+    event = make_event("s1", "tool.call", {"x.tags": ["Alpha", "BETA"]})
+    assert check(
+        event,
+        field="attributes.x.tags",
+        op="equals",
+        value=["alpha", "beta"],
+        normalize=["casefold"],
+    )
+    assert check(
+        event,
+        field="attributes.x.tags",
+        op="in",
+        value=[["ALPHA", "beta"]],
+        normalize=["casefold"],
+    )
+    assert not check(event, field="attributes.x.tags", op="equals", value=["alpha", "beta"])

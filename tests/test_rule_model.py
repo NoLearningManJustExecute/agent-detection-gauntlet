@@ -219,3 +219,29 @@ def test_rule_files_and_unreadable(tmp_path: Path) -> None:
     bad.write_bytes(b"\xff\xfe")
     with pytest.raises(InputError, match="cannot read rule file"):
         load_rule_file(bad)
+
+
+@pytest.mark.parametrize(
+    ("condition", "message"),
+    [
+        ({"field": "span_id", "op": "equals", "value": None}, "null is not a valid operand"),
+        ({"field": "span_id", "op": "in", "value": ["a", None]}, "null is not a valid operand"),
+        (
+            {"field": "span_id", "op": "regex", "value": "IGNORE", "normalize": ["casefold"]},
+            "changes under its normalize steps",
+        ),
+        ({"field": "attributes. x", "op": "equals", "value": 1}, "field must be"),
+    ],
+)
+def test_condition_edge_cases_fail_closed(condition: dict[str, Any], message: str) -> None:
+    data = rule_data(telemetry=["tool.call"], logic=where(**condition))
+    with pytest.raises(ValidationError, match=message):
+        validate(data)
+
+
+def test_regex_in_normalized_form_is_accepted() -> None:
+    rule = make_rule(
+        telemetry=["tool.call"],
+        logic=where(field="span_id", op="regex", value="ignore", normalize=["casefold"]),
+    )
+    assert rule.id == "ADG-9001"

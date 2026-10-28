@@ -3,35 +3,22 @@
 from __future__ import annotations
 
 import re
-import unicodedata
 from collections.abc import Sequence
 from functools import lru_cache
 
 from pydantic import JsonValue
 
 from agent_detection_gauntlet.engine.fields import MISSING, json_equal, resolve
+from agent_detection_gauntlet.normalize import Normalization, normalize_text
 from agent_detection_gauntlet.rules.model import (
     AllCondition,
     AnyCondition,
     EventMatch,
     FieldCondition,
-    Normalization,
     NotCondition,
     Operator,
 )
 from agent_detection_gauntlet.schema.trace import TraceEvent
-
-
-def normalize_text(text: str, steps: Sequence[Normalization]) -> str:
-    """Apply normalization steps in the given order."""
-    for step in steps:
-        if step is Normalization.CASEFOLD:
-            text = text.casefold()
-        elif step is Normalization.NFKC:
-            text = unicodedata.normalize("NFKC", text)
-        else:
-            text = " ".join(text.split())
-    return text
 
 
 @lru_cache(maxsize=1024)
@@ -40,7 +27,12 @@ def _compiled(pattern: str) -> re.Pattern[str]:
 
 
 def _norm(value: JsonValue, steps: Sequence[Normalization]) -> JsonValue:
-    return normalize_text(value, steps) if isinstance(value, str) else value
+    """Normalize a string, or every string inside a list, so equals and in see lists too."""
+    if isinstance(value, str):
+        return normalize_text(value, steps)
+    if isinstance(value, list):
+        return [_norm(item, steps) for item in value]
+    return value
 
 
 def evaluate_field(condition: FieldCondition, event: TraceEvent) -> bool:

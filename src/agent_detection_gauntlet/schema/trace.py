@@ -243,4 +243,14 @@ def integrity_problems(events: Sequence[TraceEvent]) -> list[tuple[int, str]]:
                 problems.append(
                     (index, f"{ATTR_CONTENT_REF} {ref!r} must point to an earlier event")
                 )
+    parents = {event.span_id: event.parent_span_id for event in events}
+    for index, event in enumerate(events):
+        seen = {event.span_id}
+        current = event.parent_span_id
+        while current is not None and current in parents:
+            if current in seen:
+                problems.append((index, f"parent_span_id chain from {event.span_id!r} loops"))
+                break
+            seen.add(current)
+            current = parents[current]
     return problems

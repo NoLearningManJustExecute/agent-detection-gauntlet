@@ -170,6 +170,17 @@ def _compare(op: ThresholdOp, count: int, value: int) -> bool:
     return count == value
 
 
+def _number_key(value: JsonValue) -> JsonValue:
+    """Make whole floats count as the integer they equal, matching JSON equality elsewhere."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, list):
+        return [_number_key(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _number_key(item) for key, item in value.items()}
+    return value
+
+
 def run_threshold(spec: ThresholdSpec, context: TraceContext) -> list[Hit]:
     """One hit per trace when the (distinct) count of matching events passes the comparison."""
     events = context.trace.events
@@ -185,7 +196,7 @@ def run_threshold(spec: ThresholdSpec, context: TraceContext) -> list[Hit]:
             if value is MISSING:
                 continue
             counted.append(index)
-            values.add(canonical_json(value))
+            values.add(canonical_json(_number_key(value)))
         count = len(values)
     if counted and _compare(spec.op, count, spec.value):
         return [tuple(counted)]

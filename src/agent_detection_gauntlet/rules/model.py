@@ -20,6 +20,7 @@ from pydantic import (
     model_validator,
 )
 
+from agent_detection_gauntlet.normalize import Normalization, normalize_text
 from agent_detection_gauntlet.schema.common import (
     STRICT_MODEL,
     Identifier,
@@ -39,12 +40,6 @@ class Status(StrEnum):
     STABLE = "stable"
 
 
-class Normalization(StrEnum):
-    CASEFOLD = "casefold"
-    NFKC = "nfkc"
-    COLLAPSE_WHITESPACE = "collapse_whitespace"
-
-
 class Operator(StrEnum):
     EQUALS = "equals"
     IN = "in"
@@ -61,7 +56,8 @@ ATTRIBUTE_PREFIX = "attributes."
 def _check_field_ref(value: str) -> str:
     if value in TOP_LEVEL_FIELDS:
         return value
-    if value.startswith(ATTRIBUTE_PREFIX) and value[len(ATTRIBUTE_PREFIX) :].strip():
+    key = value[len(ATTRIBUTE_PREFIX) :]
+    if value.startswith(ATTRIBUTE_PREFIX) and key and key == key.strip():
         return value
     allowed = ", ".join(sorted(TOP_LEVEL_FIELDS))
     raise ValueError(f"field must be one of {allowed}, or attributes.<key>; got {value!r}")
@@ -88,6 +84,9 @@ class FieldCondition(BaseModel):
     @model_validator(mode="after")
     def _check_operands(self) -> FieldCondition:
         op, value = self.op, self.value
+        # Null fields count as missing, so a null operand could never match.
+        if value is None or (isinstance(value, list) and None in value):
+            raise ValueError("null is not a valid operand; use exists to test for absence")
         if op is Operator.EXISTS:
             if not isinstance(value, bool):
                 raise ValueError("exists takes true or false")
@@ -103,11 +102,18 @@ class FieldCondition(BaseModel):
                 re.compile(value)
             except re.error as exc:
                 raise ValueError(f"invalid regex: {exc}") from exc
+            if self.normalize and normalize_text(value, self.normalize) != value:
+                # The subject is normalized but the pattern is not, so it must already be in
+                # normalized form or parts of it could never match.
+                raise ValueError(
+                    "regex pattern changes under its normalize steps; write it in normalized "
+                    "form (for example lowercase with casefold)"
+                )
         elif op is Operator.STARTSWITH:
             if not isinstance(value, str) or not value:
                 raise ValueError("startswith takes a non-empty string")
         elif op is Operator.CONTAINS:
-            if isinstance(value, dict | list) or value is None or value == "":
+            if isinstance(value, dict | list) or value == "":
                 raise ValueError("contains takes a non-empty string or a scalar")
         return self
 

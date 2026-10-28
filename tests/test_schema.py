@@ -196,3 +196,12 @@ def test_detection_order_check() -> None:
     }
     with pytest.raises(ValidationError, match="must not be before"):
         Detection.model_validate_json(json.dumps(data))
+
+
+def test_parent_cycle_is_reported() -> None:
+    events = [
+        make_event("a", "llm.request", parent="b"),
+        make_event("b", "llm.response", seconds=1, parent="a"),
+    ]
+    messages = [message for _, message in integrity_problems(events)]
+    assert any("loops" in m for m in messages)

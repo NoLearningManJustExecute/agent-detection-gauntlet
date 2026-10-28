@@ -135,3 +135,14 @@ def test_scan_emits_sorted_records_for_every_primitive() -> None:
 def test_scan_rejects_duplicate_rule_ids() -> None:
     with pytest.raises(ValueError, match="duplicate rule ids"):
         scan([make_rule(), make_rule()], [])
+
+
+def test_distinct_treats_whole_floats_as_integers() -> None:
+    events = [
+        make_event("c0", "tool.call", {"x.n": 1}),
+        make_event("c1", "tool.call", {"x.n": 1.0}, seconds=1),
+        make_event("c2", "tool.call", {"x.n": {"k": [2.0]}}, seconds=2),
+        make_event("c3", "tool.call", {"x.n": {"k": [2]}}, seconds=3),
+        make_event("c4", "tool.call", {"x.n": 1.5}, seconds=4),
+    ]
+    assert run(threshold(distinct="attributes.x.n", op="eq", value=3), events) == [(0, 1, 2, 3, 4)]
