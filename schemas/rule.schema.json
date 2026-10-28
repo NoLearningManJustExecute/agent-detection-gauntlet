@@ -1,0 +1,607 @@
+{
+  "$defs": {
+    "AllCondition": {
+      "additionalProperties": false,
+      "properties": {
+        "all": {
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/AllCondition"
+              },
+              {
+                "$ref": "#/$defs/AnyCondition"
+              },
+              {
+                "$ref": "#/$defs/NotCondition"
+              },
+              {
+                "$ref": "#/$defs/FieldCondition"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "All",
+          "type": "array"
+        }
+      },
+      "required": [
+        "all"
+      ],
+      "title": "AllCondition",
+      "type": "object"
+    },
+    "AnyCondition": {
+      "additionalProperties": false,
+      "properties": {
+        "any": {
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/AllCondition"
+              },
+              {
+                "$ref": "#/$defs/AnyCondition"
+              },
+              {
+                "$ref": "#/$defs/NotCondition"
+              },
+              {
+                "$ref": "#/$defs/FieldCondition"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Any",
+          "type": "array"
+        }
+      },
+      "required": [
+        "any"
+      ],
+      "title": "AnyCondition",
+      "type": "object"
+    },
+    "EventMatch": {
+      "additionalProperties": false,
+      "description": "Select single events: an event type filter plus an optional condition tree.",
+      "properties": {
+        "event_types": {
+          "items": {
+            "$ref": "#/$defs/EventType"
+          },
+          "minItems": 1,
+          "title": "Event Types",
+          "type": "array"
+        },
+        "where": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AllCondition"
+                },
+                {
+                  "$ref": "#/$defs/AnyCondition"
+                },
+                {
+                  "$ref": "#/$defs/NotCondition"
+                },
+                {
+                  "$ref": "#/$defs/FieldCondition"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Where"
+        }
+      },
+      "required": [
+        "event_types"
+      ],
+      "title": "EventMatch",
+      "type": "object"
+    },
+    "EventType": {
+      "enum": [
+        "session.start",
+        "user.prompt",
+        "retrieval",
+        "llm.request",
+        "llm.response",
+        "tool.call",
+        "tool.result",
+        "guardrail.action",
+        "session.end"
+      ],
+      "title": "EventType",
+      "type": "string"
+    },
+    "FieldCondition": {
+      "additionalProperties": false,
+      "description": "Compare one event field with a value.",
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "normalize": {
+          "description": "Normalization steps applied in the listed order to string values.",
+          "items": {
+            "$ref": "#/$defs/Normalization"
+          },
+          "title": "Normalize",
+          "type": "array"
+        },
+        "op": {
+          "$ref": "#/$defs/Operator"
+        },
+        "value": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "required": [
+        "field",
+        "op",
+        "value"
+      ],
+      "title": "FieldCondition",
+      "type": "object"
+    },
+    "Fixtures": {
+      "additionalProperties": false,
+      "description": "Trace ids the rule must fire on (tp) and must stay silent on (fp).",
+      "properties": {
+        "fp": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fp",
+          "type": "array"
+        },
+        "tp": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Tp",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tp",
+        "fp"
+      ],
+      "title": "Fixtures",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "Mappings": {
+      "additionalProperties": false,
+      "description": "Framework mappings. attack is only used when the agent performs a host action.",
+      "properties": {
+        "atlas": {
+          "items": {
+            "pattern": "^AML\\.T[0-9]{4}(\\.[0-9]{3})?$",
+            "type": "string"
+          },
+          "title": "Atlas",
+          "type": "array"
+        },
+        "attack": {
+          "items": {
+            "pattern": "^T[0-9]{4}(\\.[0-9]{3})?$",
+            "type": "string"
+          },
+          "title": "Attack",
+          "type": "array"
+        },
+        "owasp_agentic": {
+          "items": {
+            "pattern": "^ASI[0-9]{2}$",
+            "type": "string"
+          },
+          "title": "Owasp Agentic",
+          "type": "array"
+        },
+        "owasp_llm": {
+          "items": {
+            "pattern": "^LLM[0-9]{2}$",
+            "type": "string"
+          },
+          "title": "Owasp Llm",
+          "type": "array"
+        }
+      },
+      "required": [
+        "atlas",
+        "owasp_llm",
+        "owasp_agentic",
+        "attack"
+      ],
+      "title": "Mappings",
+      "type": "object"
+    },
+    "MatchLogic": {
+      "additionalProperties": false,
+      "properties": {
+        "match": {
+          "$ref": "#/$defs/EventMatch"
+        }
+      },
+      "required": [
+        "match"
+      ],
+      "title": "MatchLogic",
+      "type": "object"
+    },
+    "Normalization": {
+      "enum": [
+        "casefold",
+        "nfkc",
+        "collapse_whitespace"
+      ],
+      "title": "Normalization",
+      "type": "string"
+    },
+    "NotCondition": {
+      "additionalProperties": false,
+      "properties": {
+        "not": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AllCondition"
+            },
+            {
+              "$ref": "#/$defs/AnyCondition"
+            },
+            {
+              "$ref": "#/$defs/NotCondition"
+            },
+            {
+              "$ref": "#/$defs/FieldCondition"
+            }
+          ],
+          "title": "Not"
+        }
+      },
+      "required": [
+        "not"
+      ],
+      "title": "NotCondition",
+      "type": "object"
+    },
+    "Operator": {
+      "enum": [
+        "equals",
+        "in",
+        "contains",
+        "regex",
+        "exists",
+        "startswith"
+      ],
+      "title": "Operator",
+      "type": "string"
+    },
+    "RequireOp": {
+      "enum": [
+        "equals",
+        "contains",
+        "derives_from"
+      ],
+      "title": "RequireOp",
+      "type": "string"
+    },
+    "Requirement": {
+      "additionalProperties": false,
+      "description": "Constrain a later sequence step by a value bound in an earlier step.",
+      "properties": {
+        "bound": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Bound",
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "op": {
+          "$ref": "#/$defs/RequireOp"
+        }
+      },
+      "required": [
+        "op",
+        "bound"
+      ],
+      "title": "Requirement",
+      "type": "object"
+    },
+    "SequenceLogic": {
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "$ref": "#/$defs/SequenceSpec"
+        }
+      },
+      "required": [
+        "sequence"
+      ],
+      "title": "SequenceLogic",
+      "type": "object"
+    },
+    "SequenceSpec": {
+      "additionalProperties": false,
+      "description": "Ordered steps inside one trace, with an optional window and value binding.",
+      "properties": {
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/SequenceStep"
+          },
+          "minItems": 2,
+          "title": "Steps",
+          "type": "array"
+        },
+        "within_events": {
+          "anyOf": [
+            {
+              "minimum": 2,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Within Events"
+        },
+        "within_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Within Seconds"
+        }
+      },
+      "required": [
+        "steps"
+      ],
+      "title": "SequenceSpec",
+      "type": "object"
+    },
+    "SequenceStep": {
+      "additionalProperties": false,
+      "properties": {
+        "bind": {
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,63}$": {
+              "type": "string"
+            }
+          },
+          "title": "Bind",
+          "type": "object"
+        },
+        "match": {
+          "$ref": "#/$defs/EventMatch"
+        },
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "require": {
+          "items": {
+            "$ref": "#/$defs/Requirement"
+          },
+          "title": "Require",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "match"
+      ],
+      "title": "SequenceStep",
+      "type": "object"
+    },
+    "Severity": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "Status": {
+      "enum": [
+        "experimental",
+        "test",
+        "stable"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "ThresholdLogic": {
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {
+          "$ref": "#/$defs/ThresholdSpec"
+        }
+      },
+      "required": [
+        "threshold"
+      ],
+      "title": "ThresholdLogic",
+      "type": "object"
+    },
+    "ThresholdOp": {
+      "enum": [
+        "gte",
+        "gt",
+        "eq"
+      ],
+      "title": "ThresholdOp",
+      "type": "string"
+    },
+    "ThresholdSpec": {
+      "additionalProperties": false,
+      "description": "Count (or distinct-count) matching events per trace and compare.",
+      "properties": {
+        "distinct": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Distinct"
+        },
+        "match": {
+          "$ref": "#/$defs/EventMatch"
+        },
+        "op": {
+          "$ref": "#/$defs/ThresholdOp"
+        },
+        "value": {
+          "minimum": 1,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "match",
+        "op",
+        "value"
+      ],
+      "title": "ThresholdSpec",
+      "type": "object"
+    },
+    "Tier": {
+      "enum": [
+        "content",
+        "sequence",
+        "behavior"
+      ],
+      "title": "Tier",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A detection rule (YAML source, validated as JSON).",
+  "properties": {
+    "description": {
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "fixtures": {
+      "$ref": "#/$defs/Fixtures"
+    },
+    "hypothesis": {
+      "minLength": 1,
+      "title": "Hypothesis",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^ADG-[0-9]{4}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "logic": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/MatchLogic"
+        },
+        {
+          "$ref": "#/$defs/SequenceLogic"
+        },
+        {
+          "$ref": "#/$defs/ThresholdLogic"
+        }
+      ],
+      "title": "Logic"
+    },
+    "mappings": {
+      "$ref": "#/$defs/Mappings"
+    },
+    "severity": {
+      "$ref": "#/$defs/Severity"
+    },
+    "status": {
+      "$ref": "#/$defs/Status"
+    },
+    "telemetry": {
+      "items": {
+        "$ref": "#/$defs/EventType"
+      },
+      "minItems": 1,
+      "title": "Telemetry",
+      "type": "array"
+    },
+    "tier": {
+      "$ref": "#/$defs/Tier"
+    },
+    "title": {
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "version": {
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "title",
+    "version",
+    "status",
+    "tier",
+    "severity",
+    "description",
+    "hypothesis",
+    "mappings",
+    "telemetry",
+    "logic",
+    "limitations",
+    "fixtures"
+  ],
+  "title": "Rule",
+  "type": "object"
+}

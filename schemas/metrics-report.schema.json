@@ -1,0 +1,450 @@
+{
+  "$defs": {
+    "AttackFailed": {
+      "additionalProperties": false,
+      "description": "Malicious traces whose attack did not succeed. Excluded from recall, reported here.",
+      "properties": {
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "detected": {
+          "minimum": 0,
+          "title": "Detected",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "count",
+        "detected"
+      ],
+      "title": "AttackFailed",
+      "type": "object"
+    },
+    "Confusion": {
+      "additionalProperties": false,
+      "description": "Session-level counts. attack_failed traces are not in any cell.",
+      "properties": {
+        "fn": {
+          "minimum": 0,
+          "title": "Fn",
+          "type": "integer"
+        },
+        "fp": {
+          "minimum": 0,
+          "title": "Fp",
+          "type": "integer"
+        },
+        "tn": {
+          "minimum": 0,
+          "title": "Tn",
+          "type": "integer"
+        },
+        "tp": {
+          "minimum": 0,
+          "title": "Tp",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tp",
+        "fp",
+        "tn",
+        "fn"
+      ],
+      "title": "Confusion",
+      "type": "object"
+    },
+    "InputFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "rule",
+            "trace",
+            "detections",
+            "labels"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "path",
+        "sha256"
+      ],
+      "title": "InputFile",
+      "type": "object"
+    },
+    "Interval": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 0.95,
+          "minimum": 0.95,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "lower": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Lower",
+          "type": "number"
+        },
+        "method": {
+          "const": "wilson",
+          "title": "Method",
+          "type": "string"
+        },
+        "upper": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Upper",
+          "type": "number"
+        }
+      },
+      "required": [
+        "method",
+        "confidence",
+        "lower",
+        "upper"
+      ],
+      "title": "Interval",
+      "type": "object"
+    },
+    "Population": {
+      "additionalProperties": false,
+      "description": "Traces in the selected split, by outcome bucket.",
+      "properties": {
+        "attack_failed": {
+          "minimum": 0,
+          "title": "Attack Failed",
+          "type": "integer"
+        },
+        "benign": {
+          "minimum": 0,
+          "title": "Benign",
+          "type": "integer"
+        },
+        "malicious_succeeded": {
+          "minimum": 0,
+          "title": "Malicious Succeeded",
+          "type": "integer"
+        },
+        "traces": {
+          "minimum": 0,
+          "title": "Traces",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "traces",
+        "benign",
+        "malicious_succeeded",
+        "attack_failed"
+      ],
+      "title": "Population",
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "git_commit": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{40,64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Git Commit"
+        },
+        "git_dirty": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Git Dirty"
+        },
+        "package_version": {
+          "title": "Package Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "package_version",
+        "git_commit",
+        "git_dirty"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "Rate": {
+      "additionalProperties": false,
+      "description": "A rate with its numerator and denominator. value and ci95 are null when undefined.",
+      "properties": {
+        "ci95": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Interval"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Wilson score interval. Null when the denominator is zero, and always null for f1, which is not a binomial proportion."
+        },
+        "denominator": {
+          "minimum": 0,
+          "title": "Denominator",
+          "type": "integer"
+        },
+        "numerator": {
+          "minimum": 0,
+          "title": "Numerator",
+          "type": "integer"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value",
+        "numerator",
+        "denominator",
+        "ci95"
+      ],
+      "title": "Rate",
+      "type": "object"
+    },
+    "Rates": {
+      "additionalProperties": false,
+      "properties": {
+        "detection_rate": {
+          "$ref": "#/$defs/Rate"
+        },
+        "f1": {
+          "$ref": "#/$defs/Rate"
+        },
+        "fpr": {
+          "$ref": "#/$defs/Rate"
+        },
+        "precision": {
+          "$ref": "#/$defs/Rate"
+        },
+        "recall": {
+          "$ref": "#/$defs/Rate"
+        }
+      },
+      "required": [
+        "precision",
+        "recall",
+        "f1",
+        "fpr",
+        "detection_rate"
+      ],
+      "title": "Rates",
+      "type": "object"
+    },
+    "RuleMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "attack_failed": {
+          "$ref": "#/$defs/AttackFailed"
+        },
+        "confusion": {
+          "$ref": "#/$defs/Confusion"
+        },
+        "rates": {
+          "$ref": "#/$defs/Rates"
+        },
+        "rule_id": {
+          "pattern": "^ADG-[0-9]{4}$",
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "rule_version": {
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$",
+          "title": "Rule Version",
+          "type": "string"
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier"
+        }
+      },
+      "required": [
+        "rule_id",
+        "rule_version",
+        "tier",
+        "confusion",
+        "attack_failed",
+        "rates"
+      ],
+      "title": "RuleMetrics",
+      "type": "object"
+    },
+    "RuleRef": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^ADG-[0-9]{4}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier"
+        },
+        "version": {
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "tier"
+      ],
+      "title": "RuleRef",
+      "type": "object"
+    },
+    "Split": {
+      "enum": [
+        "dev",
+        "heldout"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "Tier": {
+      "enum": [
+        "content",
+        "sequence",
+        "behavior"
+      ],
+      "title": "Tier",
+      "type": "string"
+    },
+    "TierMetrics": {
+      "additionalProperties": false,
+      "description": "A trace counts as detected by a tier when any rule in that tier fires on it.",
+      "properties": {
+        "attack_failed": {
+          "$ref": "#/$defs/AttackFailed"
+        },
+        "confusion": {
+          "$ref": "#/$defs/Confusion"
+        },
+        "rates": {
+          "$ref": "#/$defs/Rates"
+        },
+        "rule_ids": {
+          "items": {
+            "pattern": "^ADG-[0-9]{4}$",
+            "type": "string"
+          },
+          "title": "Rule Ids",
+          "type": "array"
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier"
+        }
+      },
+      "required": [
+        "tier",
+        "rule_ids",
+        "confusion",
+        "attack_failed",
+        "rates"
+      ],
+      "title": "TierMetrics",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The metrics report JSON document.",
+  "properties": {
+    "inputs": {
+      "items": {
+        "$ref": "#/$defs/InputFile"
+      },
+      "title": "Inputs",
+      "type": "array"
+    },
+    "per_rule": {
+      "items": {
+        "$ref": "#/$defs/RuleMetrics"
+      },
+      "title": "Per Rule",
+      "type": "array"
+    },
+    "per_tier": {
+      "items": {
+        "$ref": "#/$defs/TierMetrics"
+      },
+      "title": "Per Tier",
+      "type": "array"
+    },
+    "population": {
+      "$ref": "#/$defs/Population"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "rules": {
+      "items": {
+        "$ref": "#/$defs/RuleRef"
+      },
+      "title": "Rules",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "split": {
+      "$ref": "#/$defs/Split"
+    }
+  },
+  "required": [
+    "schema_version",
+    "split",
+    "provenance",
+    "inputs",
+    "rules",
+    "population",
+    "per_rule",
+    "per_tier"
+  ],
+  "title": "MetricsReport",
+  "type": "object"
+}

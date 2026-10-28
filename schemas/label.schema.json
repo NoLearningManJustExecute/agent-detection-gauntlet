@@ -1,0 +1,115 @@
+{
+  "$defs": {
+    "Guardrails": {
+      "enum": [
+        "on",
+        "off"
+      ],
+      "title": "Guardrails",
+      "type": "string"
+    },
+    "LabelSource": {
+      "enum": [
+        "synthetic",
+        "rag-attack-lab",
+        "agent-risk-framework"
+      ],
+      "title": "LabelSource",
+      "type": "string"
+    },
+    "Split": {
+      "enum": [
+        "dev",
+        "heldout"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "Verdict": {
+      "enum": [
+        "malicious",
+        "benign"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One line of a labels JSONL file.",
+  "properties": {
+    "attack_class": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Attack class for malicious traces, null for benign.",
+      "title": "Attack Class"
+    },
+    "attack_succeeded": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Whether the attack achieved its goal. Required for malicious, null for benign.",
+      "title": "Attack Succeeded"
+    },
+    "guardrails": {
+      "$ref": "#/$defs/Guardrails"
+    },
+    "label": {
+      "$ref": "#/$defs/Verdict"
+    },
+    "mutation": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Evasion mutation applied, or null for an unmutated run.",
+      "title": "Mutation"
+    },
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/LabelSource"
+    },
+    "split": {
+      "$ref": "#/$defs/Split"
+    },
+    "trace_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+      "title": "Trace Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "trace_id",
+    "label",
+    "attack_class",
+    "attack_succeeded",
+    "mutation",
+    "guardrails",
+    "split",
+    "source"
+  ],
+  "title": "LabelRecord",
+  "type": "object"
+}

@@ -1,0 +1,78 @@
+id: ADG-0001
+title: Untrusted retrieved content flows into an external send tool call
+version: 0.1.0
+status: experimental
+tier: sequence
+severity: high
+description: >-
+  Fires when a retrieval marked untrusted is followed, in the same trace, by a tool call to an
+  external-send sink whose content derives from that retrieval. Derivation follows the
+  adg.content.ref provenance chain transitively, so the retrieved text can pass through model
+  requests and responses before it reaches the tool arguments.
+hypothesis: >-
+  Indirect prompt injection that causes harm needs two things in the same session: attacker
+  controlled text entering the context through retrieval, and the agent acting on it through a
+  tool that reaches outside the trust boundary. The rule keys on that provenance path rather than
+  on the wording of the injected text, so it should hold up under paraphrase, translation,
+  encoding, and other payload mutations that leave the data flow unchanged.
+mappings:
+  atlas:
+    - AML.T0051.001
+  owasp_llm:
+    - LLM01
+  owasp_agentic:
+    - ASI01
+  attack: []
+telemetry:
+  - retrieval
+  - tool.call
+logic:
+  sequence:
+    steps:
+      - name: untrusted_retrieval
+        match:
+          event_types:
+            - retrieval
+          where:
+            field: attributes.adg.source.trust
+            op: equals
+            value: untrusted
+        bind:
+          retrieved_span: span_id
+      - name: external_send
+        match:
+          event_types:
+            - tool.call
+          where:
+            field: attributes.gen_ai.tool.name
+            op: in
+            value:
+              - send_email
+              - http_post
+              - post_message
+              - upload_file
+            normalize:
+              - nfkc
+              - casefold
+        require:
+          - op: derives_from
+            bound: retrieved_span
+limitations:
+  - >-
+    Depends on instrumentation recording adg.content.ref. A missing link hides the flow and the
+    rule misses. Coarse provenance that marks every output as derived from all prior context
+    makes the rule fire on any send after an untrusted retrieval.
+  - >-
+    The sink list is a fixed set of tool names. Renamed tools, new send tools, and indirect
+    channels such as writing to a shared file that another process sends are not covered.
+  - >-
+    The rule cannot judge intent. A user who deliberately forwards untrusted content, such as a
+    public article, produces the same data flow and the rule fires.
+  - >-
+    The rule fires whether or not the send succeeded or was blocked downstream by a guardrail.
+fixtures:
+  tp:
+    - syn-0001
+  fp:
+    - syn-0002
+    - syn-0003

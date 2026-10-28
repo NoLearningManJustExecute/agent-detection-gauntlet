@@ -1,0 +1,8 @@
+# OWASP Top 10 for Agentic Applications entries referenced by rules.
+# verified stays false until the entry is checked against the primary source (Phase 7).
+entries:
+  - id: ASI01
+    name: Agent Goal Hijack
+    url: https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
+    version: "2026"
+    verified: false

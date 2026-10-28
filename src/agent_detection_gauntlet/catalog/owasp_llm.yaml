@@ -1,0 +1,8 @@
+# OWASP Top 10 for LLM Applications entries referenced by rules.
+# verified stays false until the entry is checked against the primary source (Phase 7).
+entries:
+  - id: LLM01
+    name: Prompt Injection
+    url: https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/
+    version: "2026"
+    verified: false

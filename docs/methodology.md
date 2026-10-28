@@ -1,0 +1,107 @@
+# Methodology
+
+This document states the measurement principles the project follows. They exist so that a
+reported number means what it appears to mean. The roadmap in [ROADMAP.md](../ROADMAP.md) lists
+them as commitments for every phase.
+
+## Ground truth is separate from evidence
+
+Traces are the evidence: what the agent did, as recorded by instrumentation. Labels are the
+ground truth: whether a trace is malicious, whether the attack succeeded, which split it belongs
+to. They live in different files.
+
+- Labels are never stored inside traces. The trace schema has no field for them.
+- The engine never reads labels. `gauntlet scan` takes rules and traces only.
+- Only the metrics stage joins detections to labels, after detection is finished.
+
+This keeps detection logic from depending, even by accident, on information a real defender
+would not have.
+
+## Held-out discipline
+
+- Before detection work begins (Phase 2), roughly 30% of traces are assigned to a `heldout`
+  split and the assignment is frozen.
+- Rules are written and tuned on the `dev` split only. Rule authors do not look at held-out
+  traces or held-out results while writing rules.
+- Published metrics come only from the held-out split. `gauntlet metrics` scores `heldout` by
+  default and records the split in every report.
+- If held-out results are poor, the rule is not retuned against them and re-scored. Results are
+  reported as measured.
+
+## Outcome buckets
+
+Not every malicious run is an attack that worked. A run where the agent ignored the injected
+instruction, or a guardrail blocked the action, is malicious in intent but did no harm. Counting
+it as a positive that a rule should catch would distort recall in either direction.
+
+So every scored trace falls into one bucket: `benign`, `malicious_succeeded` or `attack_failed`.
+Precision, recall and the other rates use only `benign` and `malicious_succeeded`. The
+`attack_failed` bucket is reported with its count and with how many of its traces each rule
+detected. Definitions are in [metrics.md](metrics.md).
+
+## Denominators and intervals
+
+- Every rate is published with its numerator and denominator.
+- Every proportion carries a Wilson 95% interval. Small denominators produce wide intervals, and
+  the width is part of the result.
+- A rate with a zero denominator is undefined and reported as `null`, never as 0.
+- F1 is reported without an interval because it is not a binomial proportion.
+
+## Determinism
+
+- The engine and the metrics stage are deterministic. The same inputs give byte-identical
+  detection files and metrics reports. Neither contains wall-clock time.
+- Every metrics report records the sha256 of each input file, the package version, and the git
+  commit and dirty flag of the code that produced it.
+- Agent runs in later phases use a fixed seed and a fixed temperature, with N runs per case, so
+  that variation between runs can be measured rather than hidden.
+
+## Synthetic fixtures
+
+The traces in `datasets/fixtures/` are hand-written synthetic data. They exist to check that the
+pipeline works end to end: that traces load, rules fire where they should and stay silent where
+they should, and metrics are computed correctly. Numbers produced from them are pipeline checks.
+**They are never published as findings** about any detection technique.
+
+## Framework mappings
+
+Rules map to MITRE ATLAS, the OWASP Top 10 for LLM Applications, the OWASP Top 10 for Agentic
+Applications and, when the agent performs a host action, MITRE ATT&CK. Every mapping ID must
+exist in the catalog shipped with the package. Catalog entries are marked unverified until they
+have been checked against the primary source, and the validator warns about every unverified ID.
+Verification is scheduled for Phase 7. Until then, mappings are working references, not
+authoritative claims.
+
+## Hypotheses and findings
+
+Each rule states a hypothesis about why it should work. A hypothesis stays a hypothesis until
+held-out measurement supports or refutes it. If simple keyword rules outperform sequence or
+behavior rules on some attack class, that is a finding and is reported as one.
+
+Coverage is computed from measured results, never declared. A technique counts as covered only
+when a rule for it passes a held-out true positive test with a false positive rate under a stated
+threshold.
+
+## Limitations
+
+These limits apply now or are expected, and will be restated next to any published result.
+
+- **Phase 0 has no real data.** Only synthetic fixtures exist. Real traces arrive in Phase 1
+  from instrumented attack and defense lab environments.
+- **Single-author corpus.** Attacks, benign traces and rules will be written by one author. Blind
+  spots in that author's view of attacks and normal use carry into the results. The held-out
+  split guards against overfitting to specific traces, not against a shared bias in how all
+  traces were made.
+- **Limited model coverage.** Later phases plan to use a single local model. Results may not
+  transfer to other models or agent frameworks.
+- **Guardrails are labeled per trace.** A trace is labeled with guardrails on or off as a whole,
+  not per action.
+- **OpenTelemetry GenAI conventions are experimental.** Every GenAI attribute used has stability
+  `development` and may change. The trace schema is pinned to one version (see
+  [schema.md](schema.md)) and versioned so it can move.
+- **Provenance depends on instrumentation.** Sequence rules that follow `adg.content.ref` are
+  only as good as the provenance links recorded. Missing links cause misses; overly broad links
+  cause false positives.
+- **No live SIEM validation.** Rules run only in this engine. Converted artifacts planned for
+  later phases will be labeled as not validated on a live SIEM.
+- **Mapping IDs are unverified** until Phase 7, as described above.
