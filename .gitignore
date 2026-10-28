@@ -1,0 +1,29 @@
+# Private planning notes never enter the repository
+_planning/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Local run outputs
+out/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
