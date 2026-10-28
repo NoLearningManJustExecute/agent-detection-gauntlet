@@ -1,0 +1,88 @@
+{
+  "$defs": {
+    "Severity": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "Tier": {
+      "enum": [
+        "content",
+        "sequence",
+        "behavior"
+      ],
+      "title": "Tier",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One line of a detections JSONL file.",
+  "properties": {
+    "first_timestamp": {
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|\\+00:00)$",
+      "title": "First Timestamp",
+      "type": "string"
+    },
+    "last_timestamp": {
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|\\+00:00)$",
+      "title": "Last Timestamp",
+      "type": "string"
+    },
+    "matched_span_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Matched Span Ids",
+      "type": "array"
+    },
+    "rule_id": {
+      "pattern": "^ADG-[0-9]{4}$",
+      "title": "Rule Id",
+      "type": "string"
+    },
+    "rule_version": {
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$",
+      "title": "Rule Version",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "severity": {
+      "$ref": "#/$defs/Severity"
+    },
+    "tier": {
+      "$ref": "#/$defs/Tier"
+    },
+    "trace_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+      "title": "Trace Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "rule_id",
+    "rule_version",
+    "trace_id",
+    "tier",
+    "severity",
+    "matched_span_ids",
+    "first_timestamp",
+    "last_timestamp"
+  ],
+  "title": "Detection",
+  "type": "object"
+}
