@@ -12,8 +12,11 @@ from agent_detection_gauntlet.metrics import compute
 from agent_detection_gauntlet.metrics.compute import (
     ScoringInputs,
     build_report,
+    check_detections_reproduce,
     compute_metrics,
     compute_rates,
+    describe_inputs,
+    display_path,
     git_provenance,
     make_rate,
 )
@@ -250,3 +253,44 @@ def test_git_provenance_in_checkout() -> None:
         pytest.skip("not running from a git checkout")
     assert len(commit) == 40
     assert isinstance(dirty, bool)
+
+
+def test_heldout_rule_fixtures_fail_closed() -> None:
+    leaky = {**LABELS, "t-fp": label("t-fp", "benign")}
+    with pytest.raises(MetricsInputError, match=r"must not be heldout traces: \['ADG-9001:t-fp'"):
+        compute_metrics(inputs(labels=leaky, trace_ids=[*TRACES, "t-fp"]))
+    dev_only = {**LABELS, "t-fp": label("t-fp", "benign", split="dev")}
+    population, _, _ = compute_metrics(inputs(labels=dev_only, trace_ids=[*TRACES, "t-fp"]))
+    assert population.traces == 11
+
+
+def test_detections_must_reproduce_the_scan() -> None:
+    expected = [detection("m1"), detection("m2")]
+    check_detections_reproduce(list(expected), expected)
+    for loaded, missing, unexpected in (
+        ([], 2, 0),
+        ([detection("m1")], 1, 0),
+        ([detection("m1"), detection("m2"), detection("b1")], 0, 1),
+        (list(reversed(expected)), 0, 0),
+    ):
+        with pytest.raises(
+            MetricsInputError, match=rf"{missing} detection\(s\) missing, {unexpected} unexpected"
+        ):
+            check_detections_reproduce(loaded, expected)
+
+
+def test_input_paths_are_relative_to_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "x.jsonl").write_bytes(b"")
+    entries = describe_inputs(
+        [
+            ("trace", Path("sub/x.jsonl")),
+            ("trace", Path("./sub/x.jsonl")),
+            ("trace", tmp_path / "sub" / "x.jsonl"),
+        ]
+    )
+    assert [entry.path for entry in entries] == ["sub/x.jsonl"]
+    assert display_path(tmp_path.parent) == tmp_path.parent.resolve().as_posix()

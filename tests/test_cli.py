@@ -245,3 +245,32 @@ def test_console_entry_point_runs_as_module() -> None:
     )
     assert result.returncode == 0
     assert result.stdout.strip() == "gauntlet 0.1.0"
+
+
+def test_metrics_rejects_partial_or_empty_detections(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    run_pipeline(tmp_path)
+    full = (tmp_path / "detections.jsonl").read_text(encoding="utf-8").splitlines()
+    for name, lines in (("partial.jsonl", full[:1]), ("empty.jsonl", [])):
+        path = tmp_path / name
+        path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+        code = main(
+            [
+                "metrics",
+                "--rules",
+                str(RULES_DIR),
+                "--traces",
+                str(FIXTURE_TRACES),
+                "--detections",
+                str(path),
+                "--labels",
+                str(FIXTURE_LABELS),
+                "--out",
+                str(tmp_path / "m.json"),
+                "--fixtures",
+                str(FIXTURE_TRACES),
+            ]
+        )
+        assert code == 1
+        assert "does not match a scan" in capsys.readouterr().err

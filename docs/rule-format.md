@@ -170,7 +170,11 @@ values:
 | `collapse_whitespace` | Split on any whitespace and join with single spaces. Also trims both ends. |
 
 Order matters. `[nfkc, casefold]` and `[casefold, nfkc]` can give different results for some
-characters.
+characters. Prefer `[nfkc, casefold]`.
+
+A `regex` pattern must be unchanged by its own `normalize` steps. Under `casefold` this rules out
+uppercase letters, including the escapes `\S`, `\W`, `\D` and `\B` (casefold would turn them into
+their lowercase opposites). Write `[^\s]` instead of `\S`, and so on.
 
 ## Mappings
 

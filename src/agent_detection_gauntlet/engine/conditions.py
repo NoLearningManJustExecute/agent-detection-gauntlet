@@ -54,8 +54,9 @@ def evaluate_field(condition: FieldCondition, event: TraceEvent) -> bool:
             if isinstance(actual, str):
                 return isinstance(expected, str) and normalize_text(expected, steps) in actual
             if isinstance(actual, list):
+                # List items were already normalized along with ``actual``.
                 target = _norm(expected, steps)
-                return any(json_equal(_norm(item, steps), target) for item in actual)
+                return any(json_equal(item, target) for item in actual)
             return False
         case Operator.STARTSWITH:
             return (

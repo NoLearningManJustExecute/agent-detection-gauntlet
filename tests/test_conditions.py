@@ -195,3 +195,12 @@ def test_equals_and_in_normalize_list_values() -> None:
         normalize=["casefold"],
     )
     assert not check(event, field="attributes.x.tags", op="equals", value=["alpha", "beta"])
+
+
+def test_contains_on_list_normalizes_items_once() -> None:
+    # Script capital H: casefold then NFKC is not idempotent, so a second pass would differ.
+    letter = chr(0x210C)
+    event = make_event("s1", "tool.call", {"x.tags": [letter], "x.text": letter})
+    steps = ["casefold", "nfkc"]
+    assert check(event, field="attributes.x.tags", op="contains", value=letter, normalize=steps)
+    assert check(event, field="attributes.x.text", op="equals", value=letter, normalize=steps)

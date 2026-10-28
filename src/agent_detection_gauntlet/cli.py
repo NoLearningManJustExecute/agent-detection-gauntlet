@@ -14,7 +14,11 @@ from agent_detection_gauntlet.errors import GauntletError
 from agent_detection_gauntlet.io.jsonl import pretty_json, read_jsonl, write_jsonl, write_text
 from agent_detection_gauntlet.io.labels import load_labels
 from agent_detection_gauntlet.io.traces import load_traces
-from agent_detection_gauntlet.metrics.compute import ScoringInputs, build_report
+from agent_detection_gauntlet.metrics.compute import (
+    ScoringInputs,
+    build_report,
+    check_detections_reproduce,
+)
 from agent_detection_gauntlet.metrics.report import InputRole
 from agent_detection_gauntlet.rules.validator import ValidationReport, validate_rules
 from agent_detection_gauntlet.schema.detection import Detection
@@ -74,13 +78,15 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     trace_set = load_traces(args.traces)
     labels = load_labels([args.labels])
     detections = [record for _, record in read_jsonl(args.detections, Detection)]
+    rules = [loaded.rule for loaded in report.rules]
+    check_detections_reproduce(detections, scan(rules, trace_set.traces))
     split = Split(args.split)
     files: list[tuple[InputRole, Path]] = [("rule", loaded.path) for loaded in report.rules]
     files += [("trace", path) for path in trace_set.files]
     files += [("detections", args.detections), ("labels", args.labels)]
     metrics = build_report(
         ScoringInputs(
-            rules=[loaded.rule for loaded in report.rules],
+            rules=rules,
             trace_ids=trace_set.trace_ids(),
             labels=labels,
             detections=detections,

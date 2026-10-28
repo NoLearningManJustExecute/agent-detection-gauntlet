@@ -124,6 +124,16 @@ Cross-checks:
 5. Every detection's `rule_version` equals the version of that rule in the rule set. A
    detections file from an older rule version cannot be scored against a newer rule.
 6. Every detection names a trace that was supplied.
+7. No rule names a heldout trace as a tp or fp fixture. Fixtures are the data a rule is written
+   against, so a heldout fixture would mean tuning on the evaluation split.
+8. The detections file is exactly what `scan` produces for the supplied rules and traces: the
+   same records in the same order. `gauntlet metrics` re-runs the scan to check this, so a stale,
+   partial, empty or edited detections file is rejected instead of turning unscanned traces into
+   silent true negatives or false negatives.
+
+Input paths in the report are written relative to the working directory when the file is inside
+it, and as absolute paths otherwise, so `x`, `./x` and the absolute form of the same file all
+record the same path.
 
 Labels in the other split that name traces not supplied are allowed and ignored. Detections on
 supplied traces outside the selected split are allowed and do not count.

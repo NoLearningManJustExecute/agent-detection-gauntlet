@@ -121,6 +121,14 @@ def check_inputs(inputs: ScoringInputs) -> None:
     versions = {rule.id: rule.version for rule in inputs.rules}
     if len(versions) != len(inputs.rules):
         raise MetricsInputError("duplicate rule ids in the rule set")
+    leaked = sorted(
+        f"{rule.id}:{trace_id}"
+        for rule in inputs.rules
+        for trace_id in (*rule.fixtures.tp, *rule.fixtures.fp)
+        if trace_id in inputs.labels and inputs.labels[trace_id].split is Split.HELDOUT
+    )
+    if leaked:
+        raise MetricsInputError(f"rule fixtures must not be heldout traces: {leaked}")
     for record in inputs.detections:
         if record.rule_id not in versions:
             raise MetricsInputError(f"detection names unknown rule {record.rule_id}")
@@ -131,6 +139,24 @@ def check_inputs(inputs: ScoringInputs) -> None:
             )
         if record.trace_id not in traces:
             raise MetricsInputError(f"detection names trace {record.trace_id!r} not supplied")
+
+
+def check_detections_reproduce(loaded: Sequence[Detection], rescanned: Sequence[Detection]) -> None:
+    """Fail closed unless the detections file is exactly a scan of the supplied rules and traces.
+
+    This catches stale, partial, empty or hand-edited detection files, which would otherwise turn
+    unscanned traces into silent true negatives or false negatives.
+    """
+    if list(loaded) == list(rescanned):
+        return
+    loaded_keys = {record.sort_key() for record in loaded}
+    rescanned_keys = {record.sort_key() for record in rescanned}
+    raise MetricsInputError(
+        "detections file does not match a scan of the supplied rules and traces: "
+        f"{len(rescanned_keys - loaded_keys)} detection(s) missing, "
+        f"{len(loaded_keys - rescanned_keys)} unexpected, "
+        f"{len(loaded)} loaded vs {len(rescanned)} expected (records must also be in scan order)"
+    )
 
 
 def compute_metrics(
@@ -197,13 +223,21 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def display_path(path: Path) -> str:
+    """Path relative to the working directory when inside it, so reports do not depend on
+    how a path was typed and do not carry local directory names. Absolute otherwise."""
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
+
 def describe_inputs(files: Iterable[tuple[InputRole, Path]]) -> list[InputFile]:
-    entries = {
-        (role, path.as_posix()): InputFile(
-            role=role, path=path.as_posix(), sha256=sha256_file(path)
-        )
-        for role, path in files
-    }
+    entries: dict[tuple[str, str], InputFile] = {}
+    for role, path in files:
+        shown = display_path(path)
+        entries[(role, shown)] = InputFile(role=role, path=shown, sha256=sha256_file(path))
     return [entries[key] for key in sorted(entries)]
 
 
