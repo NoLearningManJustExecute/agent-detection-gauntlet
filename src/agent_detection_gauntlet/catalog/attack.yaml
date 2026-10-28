@@ -1,0 +1,3 @@
+# MITRE ATT&CK techniques referenced by rules. Used only when the agent performs a host action.
+# verified stays false until the entry is checked against the primary source (Phase 7).
+entries: []

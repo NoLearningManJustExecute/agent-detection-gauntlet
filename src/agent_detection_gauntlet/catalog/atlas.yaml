@@ -1,0 +1,8 @@
+# MITRE ATLAS techniques referenced by rules.
+# verified stays false until the entry is checked against the primary source (Phase 7).
+entries:
+  - id: AML.T0051.001
+    name: "LLM Prompt Injection: Indirect"
+    url: https://atlas.mitre.org/techniques/AML.T0051.001
+    version: "2026.09"
+    verified: false
