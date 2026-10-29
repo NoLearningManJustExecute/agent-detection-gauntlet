@@ -14,7 +14,7 @@ from agent_detection_gauntlet.catalog import (
     parse_catalog_file,
 )
 from agent_detection_gauntlet.errors import CatalogError
-from agent_detection_gauntlet.rules.validator import IssueLevel, validate_rules
+from agent_detection_gauntlet.rules.validator import IssueLevel, ValidationReport, validate_rules
 from tests.conftest import FIXTURE_TRACES, RULES_DIR, rule_data, write_rule
 
 
@@ -34,7 +34,9 @@ VERIFIED = Catalog(
 )
 
 
-def run(tmp_path: Path, fixture_dir: Path, *rules: dict[str, Any], catalog: Catalog = VERIFIED):
+def run(
+    tmp_path: Path, fixture_dir: Path, *rules: dict[str, Any], catalog: Catalog = VERIFIED
+) -> ValidationReport:
     rules_dir = tmp_path / "rules"
     for data in rules:
         write_rule(rules_dir, data)

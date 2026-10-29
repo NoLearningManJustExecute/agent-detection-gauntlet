@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agent_detection_gauntlet.paths import shown_path
+
 
 class GauntletError(Exception):
     """Base class for errors that the CLI reports and exits non-zero on."""
@@ -16,7 +18,8 @@ class InputError(GauntletError):
         self.path = Path(path)
         self.line = line
         self.detail = message
-        location = self.path.as_posix() if line is None else f"{self.path.as_posix()}:{line}"
+        shown = shown_path(self.path)
+        location = shown if line is None else f"{shown}:{line}"
         super().__init__(f"{location}: {message}")
 
 

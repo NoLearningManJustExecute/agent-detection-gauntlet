@@ -31,6 +31,7 @@ from agent_detection_gauntlet.metrics.report import (
     TierMetrics,
 )
 from agent_detection_gauntlet.metrics.stats import ratio, wilson_interval
+from agent_detection_gauntlet.paths import repo_relative, shown_path
 from agent_detection_gauntlet.rules.model import Rule
 from agent_detection_gauntlet.schema.common import SCHEMA_VERSION, TIER_ORDER
 from agent_detection_gauntlet.schema.detection import Detection
@@ -223,21 +224,35 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def display_path(path: Path) -> str:
-    """Path relative to the working directory when inside it, so reports do not depend on
-    how a path was typed and do not carry local directory names. Absolute otherwise."""
-    resolved = path.resolve()
-    try:
-        return resolved.relative_to(Path.cwd().resolve()).as_posix()
-    except ValueError:
-        return resolved.as_posix()
+def describe_inputs(
+    files: Iterable[tuple[InputRole, Path]],
+    *,
+    external_basename: bool = False,
+    root: Path | None = None,
+) -> list[InputFile]:
+    """One entry per input file, with its path relative to the repository root.
 
-
-def describe_inputs(files: Iterable[tuple[InputRole, Path]]) -> list[InputFile]:
+    The same file always records the same path, whatever the working directory and however the
+    path was typed. A file outside the root fails closed, unless ``external_basename`` is set, in
+    which case only its file name is recorded and the entry is marked external.
+    """
     entries: dict[tuple[str, str], InputFile] = {}
     for role, path in files:
-        shown = display_path(path)
-        entries[(role, shown)] = InputFile(role=role, path=shown, sha256=sha256_file(path))
+        relative = repo_relative(path, root)
+        if relative is None and not external_basename:
+            raise MetricsInputError(
+                f"{role} input {shown_path(path)} is outside the repository root; pass "
+                "--external-basename to record only its file name"
+            )
+        recorded = path.name if relative is None else relative
+        entry = InputFile(
+            role=role, path=recorded, external=relative is None, sha256=sha256_file(path)
+        )
+        previous = entries.setdefault((role, recorded), entry)
+        if previous != entry:
+            raise MetricsInputError(
+                f"two different {role} inputs would both be recorded as {recorded!r}"
+            )
     return [entries[key] for key in sorted(entries)]
 
 
@@ -261,14 +276,20 @@ def git_provenance() -> tuple[str | None, bool | None]:
     return commit.strip(), None if status is None else bool(status.strip())
 
 
-def build_report(inputs: ScoringInputs, files: Iterable[tuple[InputRole, Path]]) -> MetricsReport:
+def build_report(
+    inputs: ScoringInputs,
+    files: Iterable[tuple[InputRole, Path]],
+    *,
+    external_basename: bool = False,
+) -> MetricsReport:
     population, per_rule, per_tier = compute_metrics(inputs)
+    described = describe_inputs(files, external_basename=external_basename)
     commit, dirty = git_provenance()
     return MetricsReport(
         schema_version=SCHEMA_VERSION,
         split=inputs.split,
         provenance=Provenance(package_version=__version__, git_commit=commit, git_dirty=dirty),
-        inputs=describe_inputs(files),
+        inputs=described,
         rules=[
             RuleRef(id=rule.id, version=rule.version, tier=rule.tier)
             for rule in sorted(inputs.rules, key=lambda item: item.id)

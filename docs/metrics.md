@@ -131,9 +131,26 @@ Cross-checks:
    partial, empty or edited detections file is rejected instead of turning unscanned traces into
    silent true negatives or false negatives.
 
-Input paths in the report are written relative to the working directory when the file is inside
-it, and as absolute paths otherwise, so `x`, `./x` and the absolute form of the same file all
-record the same path.
+## Paths in reports and logs
+
+No report, log line or error message carries an absolute local path.
+
+- Every input path in the report is written **relative to the repository root**, with `/`
+  separators. The root is the nearest directory at or above the working directory that holds
+  `.git`, or the working directory itself when there is none. `gauntlet --root DIR <command>`
+  sets it explicitly.
+- Because paths are relative to the root and not to the working directory, `x`, `./x`, `../x`
+  from a subdirectory and the absolute form of the same file all record the same path, and a
+  report is byte-identical whichever directory the command runs from.
+- An input **outside the repository root fails closed**: `gauntlet metrics` stops with an error
+  and writes no report. With `--external-basename`, such an input is accepted and recorded by its
+  file name only, with `"external": true`. Its sha256 is still recorded. Two different external
+  inputs of the same role and file name are rejected, since the report could not tell them apart.
+- Output files (`--out`) may be written anywhere. Their paths are not recorded in reports.
+- Log lines and error messages show paths inside the root the same way, and paths outside it as
+  `<outside repo>/<file name>`.
+- The report model itself rejects any input path that is absolute, uses `\`, starts with a
+  drive letter, or contains an empty, `.` or `..` segment.
 
 Labels in the other split that name traces not supplied are allowed and ignored. Detections on
 supplied traces outside the selected split are allowed and do not count.
@@ -149,7 +166,7 @@ The report is one JSON object:
 | `provenance.package_version` | Version of the installed package. |
 | `provenance.git_commit` | Commit of the git checkout the package runs from, or `null`. |
 | `provenance.git_dirty` | `true` if tracked files in that checkout have uncommitted changes, `false` if not, `null` if unknown. Untracked files are ignored. |
-| `inputs` | One entry per input file: `role` (`rule`, `trace`, `detections`, `labels`), `path` as given on the command line (with `/` separators), and the `sha256` of the file bytes. Sorted by role, then path. |
+| `inputs` | One entry per input file: `role` (`rule`, `trace`, `detections`, `labels`), `path` relative to the repository root (or the file name only when `external`), `external` (`true` only for an input outside the root accepted with `--external-basename`), and the `sha256` of the file bytes. Sorted by role, then path. |
 | `rules` | Each rule scored: `id`, `version`, `tier`, sorted by id. |
 | `population` | Traces in the selected split: `traces`, `benign`, `malicious_succeeded`, `attack_failed`. |
 | `per_rule` | Per rule, sorted by id: `rule_id`, `rule_version`, `tier`, `confusion` (`tp`, `fp`, `tn`, `fn`), `attack_failed` (`count`, `detected`), `rates` (`precision`, `recall`, `f1`, `fpr`, `detection_rate`). |
@@ -164,8 +181,10 @@ git is not available, both are `null`.
 
 The report contains **no timestamps** and no other run-specific values. It is written as JSON
 with sorted keys, two-space indentation, a trailing newline and LF line endings. Running the
-same command again, with the same input paths, the same input bytes and the same checkout state,
-gives a byte-identical file. Each input's sha256 lets a reader confirm which exact files a
+same command again, with the same input files, the same input bytes and the same checkout state,
+gives a byte-identical file, from the repository root or from any subdirectory. No report field
+depends on the working directory. The only fields that can change between two runs on the same
+inputs are `provenance.git_commit` and `provenance.git_dirty`, when the checkout itself changes. Each input's sha256 lets a reader confirm which exact files a
 report was computed from.
 
 ## Default split

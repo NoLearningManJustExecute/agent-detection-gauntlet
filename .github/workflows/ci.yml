@@ -1,13 +1,11 @@
 name: CI
 
+# No path filters: the leak guard must run on every change, documentation included.
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "**.md"
   pull_request:
-    paths-ignore:
-      - "**.md"
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -17,6 +15,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  leak-guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Scan tree and full history
+        env:
+          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+        run: python tools/leak_guard.py --all
+      - name: Scan pull request text
+        if: github.event_name == 'pull_request'
+        env:
+          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tools/leak_guard.py --pr
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: mypy strict
+        run: mypy --strict src tests tools
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -90,6 +129,10 @@ jobs:
           cmp out/run1/metrics.json out/metrics.json
           test "$(wc -l < out/detections.jsonl)" -ge 1
           echo "detections and metrics are byte-identical across runs"
+      - name: Leak guard on generated outputs
+        env:
+          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+        run: python tools/leak_guard.py --text out/detections.jsonl --text out/metrics.json
 
   audit:
     runs-on: ubuntu-latest

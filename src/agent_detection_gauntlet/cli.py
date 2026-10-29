@@ -20,6 +20,7 @@ from agent_detection_gauntlet.metrics.compute import (
     check_detections_reproduce,
 )
 from agent_detection_gauntlet.metrics.report import InputRole
+from agent_detection_gauntlet.paths import set_repo_root, shown_path
 from agent_detection_gauntlet.rules.validator import ValidationReport, validate_rules
 from agent_detection_gauntlet.schema.detection import Detection
 from agent_detection_gauntlet.schema.export import export_schemas, schema_drift
@@ -68,7 +69,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
     write_jsonl(args.out, detections)
     print(
         f"ok: {len(detections)} detection(s) from {len(report.rules)} rule(s) "
-        f"over {len(trace_set.traces)} trace(s) -> {args.out.as_posix()}"
+        f"over {len(trace_set.traces)} trace(s) -> {shown_path(args.out)}"
     )
     return 0
 
@@ -93,11 +94,12 @@ def cmd_metrics(args: argparse.Namespace) -> int:
             split=split,
         ),
         files,
+        external_basename=args.external_basename,
     )
     write_text(args.out, pretty_json(metrics.model_dump(mode="json")))
     print(
         f"ok: split {split.value}, {metrics.population.traces} trace(s) scored "
-        f"-> {args.out.as_posix()}"
+        f"-> {shown_path(args.out)}"
     )
     return 0
 
@@ -107,13 +109,13 @@ def cmd_export_schemas(args: argparse.Namespace) -> int:
         drift = schema_drift(args.out)
         if drift:
             for name in drift:
-                print(f"error: {args.out.as_posix()}/{name} is out of date", file=sys.stderr)
+                print(f"error: {shown_path(args.out / name)} is out of date", file=sys.stderr)
             print("run `gauntlet export-schemas` and commit the result", file=sys.stderr)
             return 1
-        print(f"ok: schemas in {args.out.as_posix()} match the models")
+        print(f"ok: schemas in {shown_path(args.out)} match the models")
         return 0
     written = export_schemas(args.out)
-    print(f"ok: wrote {len(written)} schema(s) to {args.out.as_posix()}")
+    print(f"ok: wrote {len(written)} schema(s) to {shown_path(args.out)}")
     return 0
 
 
@@ -123,6 +125,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Evaluate AI-agent detections against labeled traces.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "--root",
+        type=Path,
+        help="repository root that recorded and printed paths are relative to "
+        "(default: nearest parent of the working directory holding .git)",
+    )
     sub = parser.add_subparsers(dest="command", required=True, metavar="command")
 
     fixtures_help = f"fixture trace files or directories (default: {DEFAULT_FIXTURES})"
@@ -157,6 +165,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--fixtures", nargs="+", type=Path, default=[DEFAULT_FIXTURES], help=fixtures_help
     )
+    p.add_argument(
+        "--external-basename",
+        action="store_true",
+        help="allow inputs outside the repository root and record only their file names",
+    )
     p.set_defaults(handler=cmd_metrics)
 
     p = sub.add_parser("export-schemas", help="regenerate the JSON Schemas")
@@ -169,11 +182,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    set_repo_root(args.root)
     try:
         return int(args.handler(args))
     except GauntletError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except OSError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        where = f"{shown_path(str(exc.filename))}: " if exc.filename else ""
+        print(f"error: {where}{exc.strerror or type(exc).__name__}", file=sys.stderr)
         return 1

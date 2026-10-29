@@ -13,7 +13,9 @@ def spec(steps: list[dict[str, Any]], **options: Any) -> SequenceSpec:
     return SequenceSpec.model_validate_json(json.dumps({"steps": steps, **options}))
 
 
-def step(name: str, event_type: str, where: dict[str, Any] | None = None, **extra: Any) -> dict:
+def step(
+    name: str, event_type: str, where: dict[str, Any] | None = None, **extra: Any
+) -> dict[str, Any]:
     match: dict[str, Any] = {"event_types": [event_type]}
     if where is not None:
         match["where"] = where

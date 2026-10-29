@@ -50,7 +50,7 @@ def read_jsonl[M: BaseModel](path: Path, model: type[M]) -> list[tuple[int, M]]:
     try:
         raw = path.read_bytes()
     except OSError as exc:
-        raise InputError(path, f"cannot read file: {exc.strerror or exc}") from exc
+        raise InputError(path, f"cannot read file: {exc.strerror or type(exc).__name__}") from exc
     records: list[tuple[int, M]] = []
     lines = raw.split(b"\n")
     if lines and lines[-1] == b"":

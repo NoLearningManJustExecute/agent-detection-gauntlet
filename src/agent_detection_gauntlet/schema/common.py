@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Final
 
 from pydantic import (
     AfterValidator,
@@ -16,7 +16,7 @@ from pydantic import (
     WithJsonSchema,
 )
 
-SCHEMA_VERSION = "0.1"
+SCHEMA_VERSION: Final = "0.1"
 
 # Every model is strict: no unknown keys, no type coercion, immutable after validation.
 STRICT_MODEL = ConfigDict(extra="forbid", strict=True, frozen=True)
