@@ -28,6 +28,8 @@ CI runs all of these. Every job must pass before a change is merged.
 history baseline and the CI layout are in [tools/LEAK_GUARD.md](tools/LEAK_GUARD.md).
 
 - Hooks: run `git config core.hooksPath .githooks` once per clone.
+- Private list: if the guard warns that no private denylist was found, point the clone at it
+  once with `git config leakguard.denylist <path to the list>`.
 - Before every push: `python tools/leak_guard.py --all`.
 - The CI `pipeline` job also runs `--text` on every generated output.
 - To remove metadata from a PNG before committing it: `python tools/leak_guard.py --strip-png FILE`.
