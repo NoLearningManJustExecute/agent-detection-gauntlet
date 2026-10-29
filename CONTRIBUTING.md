@@ -33,7 +33,7 @@ library only.
 | Flag | Scans |
 | --- | --- |
 | `--tree` | Every tracked file and every untracked file that is not ignored, including file names. |
-| `--history` | Every commit reachable from any ref: author and committer names and emails, the full message, every added line, and every image blob. |
+| `--history` | Every commit reachable from any ref: author and committer names and emails, the full message and every added line. Every annotated tag: name, tagger and message. Every reachable blob the text diff does not show (binary, UTF-16, or hidden by a diff attribute), and every image blob. |
 | `--text FILE` | One file. Use it for a pull request body before posting it, and for generated outputs. |
 | `--pr` | In CI: the current pull request's title, body, reviews, review comments and comments, read with the GitHub REST API. |
 | `--all` | `--tree` and `--history`. |
@@ -55,7 +55,10 @@ These patterns contain nothing personal and live in the guard itself:
 - Secrets: private key headers and common token prefixes (GitHub, API keys, Slack, AWS access
   key ids).
 
-A generic hit prints the file, line, rule name and the match with its middle masked.
+A generic hit prints the file, line, rule name and the match with its middle masked. A file
+whose own name holds a match or a private identifier is shown as `<path withheld ...>` with a
+short digest instead of its name. Text files with a UTF-16 or UTF-32 byte order mark are decoded;
+other binary files are listed as not scanned.
 
 ### Private denylist
 
@@ -93,7 +96,8 @@ identifier (the guard refuses to start if it does) and never affects denylist hi
 `.githooks/pre-commit` runs `--tree` and `.githooks/pre-push` runs `--all`. Hooks are a local
 safety net and can be skipped. CI is the enforcement: the `leak-guard` job runs `--all` on the
 full history and `--pr` on pull requests, and the `pipeline` job runs `--text` on every
-generated output.
+generated output. The `PR text guard` workflow runs `--pr` again whenever a comment or review is
+posted or edited.
 
 ## Paths in outputs
 

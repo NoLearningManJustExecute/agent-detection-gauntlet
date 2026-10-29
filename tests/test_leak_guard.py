@@ -381,12 +381,15 @@ def test_tree_scan(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert code == 1
     assert "untracked.md:1: email-address" in output
     assert "ignored.txt" not in output
-    assert "blob.bin" not in output
+    assert "notice: blob.bin: binary, not scanned" in output
+    assert "blob.bin:" not in output.replace("notice: blob.bin: binary", "")
     assert "notice: plain.png: image, needs manual review" in output
     assert "plain.png: image-metadata" not in output
     assert "photo.jpg: image-metadata: EXIF or XMP metadata present" in output
     assert "icon.svg: image-metadata" in output
+    assert "<path withheld " in output
     assert "(file name):1: denylist: private identifier (hash #1)" in output
+    assert SECRET_WORD not in output.lower()
     assert "hit(s) (tree; denylist 2 entries from LEAK_DENYLIST)" in output
 
 
@@ -444,6 +447,7 @@ def test_parse_patch_tracks_new_file_line_numbers() -> None:
     patch = "\n".join(
         [
             "diff --git a/x.md b/x.md",
+            "index 1111111..aaaaaaa 100644",
             "--- a/x.md",
             "+++ b/x.md",
             "@@ -1,0 +5,2 @@",
@@ -452,6 +456,7 @@ def test_parse_patch_tracks_new_file_line_numbers() -> None:
             " seven",
             "-gone",
             "+eight",
+            "+++ looks like a header but is an added line",
             "diff --git a/old.md b/old.md",
             "--- a/old.md",
             "+++ /dev/null",
@@ -461,13 +466,22 @@ def test_parse_patch_tracks_new_file_line_numbers() -> None:
             '+++ "b/sp ace.md"',
             "@@ -0,0 +1 @@",
             "+new",
+            "diff --git a/b.bin b/b.bin",
+            "index 0000000..bbbbbbb",
+            "Binary files /dev/null and b/b.bin differ",
         ]
     )
-    files = parse_patch(patch)
-    assert [(f.path, f.lines, f.numbers) for f in files] == [
-        ("x.md", ["five", "six", "eight"], [5, 6, 8]),
-        ("sp ace.md", ["new"], [1]),
+    files, shown_as_text = parse_patch(patch)
+    assert [(f.path, f.blob, f.lines, f.numbers) for f in files] == [
+        (
+            "x.md",
+            "aaaaaaa",
+            ["five", "six", "eight", "++ looks like a header but is an added line"],
+            [5, 6, 8, 9],
+        ),
+        ("sp ace.md", None, ["new"], [1]),
     ]
+    assert shown_as_text == {"aaaaaaa"}
 
 
 # ---------------------------------------------------------------- pull request text
@@ -529,7 +543,7 @@ def test_pr_scan_setup_errors(
         "GITHUB_EVENT_PATH": event_file(tmp_path, {"push": {}}),
     }
     code, output = run_guard(args, env, capsys)
-    assert (code, "only on pull_request events" in output) == (2, True)
+    assert (code, "only on pull request events" in output) == (2, True)
 
     env["GITHUB_EVENT_PATH"] = event_file(tmp_path, {"pull_request": {"number": 1}})
     monkeypatch.setattr(leak_guard, "http_get_json", lambda url, token: {"title": "t"})
@@ -602,3 +616,129 @@ def test_repository_is_clean_under_its_own_guard(capsys: pytest.CaptureFixture[s
     # The private list is not available everywhere, so this checks generic rules on the tree.
     code, output = run_guard(["--tree"], {}, capsys)
     assert code == 0, output
+
+
+# ---------------------------------------------------------------- audit follow-ups
+
+
+@pytest.mark.parametrize(
+    ("text", "rule"),
+    [
+        (BACKSLASH * 4 + "fileserver" + BACKSLASH * 2 + "share", "unc-path"),
+        ("cd /c/" + "users/alex", "windows-home-path"),
+        ("/mnt/c/" + "Users/alex", "windows-home-path"),
+        ("-" * 5 + "BEGIN PGP " + "PRIVATE KEY" + " BLOCK" + "-" * 5, "private-key"),
+    ],
+)
+def test_audit_pattern_gaps_are_closed(text: str, rule: str) -> None:
+    assert rule in rules_hit(text)
+
+
+def test_runner_home_exception_rejects_parent_segments() -> None:
+    sample = "/" + "home/runner/../alex"
+    assert rules_hit(sample, origin=".github/workflows/ci.yml") == ["linux-home-path"]
+
+
+def test_safe_label_withholds_leaky_paths() -> None:
+    scanner = Scanner(denylist=denylist())
+    assert scanner.safe_label("docs/a.md") == "docs/a.md"
+    withheld = scanner.safe_label(f"docs/{SECRET_WORD}.md")
+    assert withheld.startswith("<path withheld ")
+    assert SECRET_WORD not in withheld
+    assert scanner.safe_label("alex" + AT + "gmail.com.txt").startswith("<path withheld ")
+
+
+def test_decode_text_handles_byte_order_marks() -> None:
+    sample = "mail " + "alex" + AT + "gmail.com"
+    assert leak_guard.decode_text(b"\xff\xfe" + sample.encode("utf-16-le")) == sample
+    assert leak_guard.decode_text(b"\xfe\xff" + sample.encode("utf-16-be")) == sample
+    assert leak_guard.decode_text(b"\xff\xfe\0\0" + sample.encode("utf-32-le")) == sample
+    assert leak_guard.decode_text(b"\0\0\xfe\xff" + sample.encode("utf-32-be")) == sample
+    assert leak_guard.decode_text(b"x\0y") is None
+
+
+def test_history_scans_blobs_the_diff_hides_and_tags(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    address = "alex" + AT + "gmail.com"
+    (repo / ".gitattributes").write_text("*.dat -diff\n", encoding="utf-8")
+    (repo / "hidden.dat").write_text(f"contact {address}\n", encoding="utf-8")
+    (repo / "wide.txt").write_bytes(b"\xff\xfe" + f"wide {address}".encode("utf-16-le"))
+    (repo / f"{SECRET_WORD}-notes.md").write_text("fine\n", encoding="utf-8")
+    (repo / "blob.bin").write_bytes(b"\0\x01\x02")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "add files")
+    git(repo, "rm", "-q", "hidden.dat", "wide.txt", f"{SECRET_WORD}-notes.md")
+    git(repo, "commit", "-q", "-m", "remove them")
+    git(repo, "tag", "-a", "v1", "-m", f"release by {address}")
+    git(repo, "tag", "plain")
+
+    code, output = run_guard(
+        ["--root", str(repo), "--history"], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 1
+    assert "history blob hidden.dat:1: email-address" in output
+    assert "history blob wide.txt:1: email-address" in output
+    assert "tag v1 message:1: email-address" in output
+    assert "notice: history blob blob.bin: binary, not scanned" in output
+    assert "(file name):1: denylist: private identifier (hash #1)" in output
+    assert SECRET_WORD not in output.lower()
+
+
+def test_pr_number_from_comment_event(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fake_get(url: str, token: str) -> Any:
+        return {"title": "t", "body": ""} if url.endswith("/pulls/3") else []
+
+    monkeypatch.setattr(leak_guard, "http_get_json", fake_get)
+    env = {
+        "GITHUB_TOKEN": "t",
+        "GITHUB_REPOSITORY": "o/r",
+        "LEAK_DENYLIST": DENYLIST_TEXT,
+        "GITHUB_EVENT_PATH": event_file(
+            tmp_path, {"issue": {"number": 3, "pull_request": {"url": "x"}}}
+        ),
+    }
+    code, output = run_guard(["--root", str(tmp_path), "--pr"], env, capsys)
+    assert (code, "clean (pr;" in output) == (0, True)
+
+    env["GITHUB_EVENT_PATH"] = event_file(tmp_path, {"issue": {"number": 4}})
+    code, output = run_guard(["--root", str(tmp_path), "--pr"], env, capsys)
+    assert (code, "only on pull request events" in output) == (2, True)
+
+
+def test_value_errors_exit_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def broken(*args: object) -> None:
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    monkeypatch.setattr(leak_guard, "scan_tree", broken)
+    code, output = run_guard(["--root", str(tmp_path), "--tree"], {}, capsys)
+    assert (code, "cannot process input (UnicodeDecodeError)" in output) == (2, True)
+
+
+def test_git_errors_are_redacted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = "C" + ":/" + "Users/someone/repo"
+
+    class Result:
+        returncode = 128
+        stdout = b""
+        stderr = f"fatal: not a git repository: {path}\nmore".encode()
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: Result())
+    with pytest.raises(GuardSetupError) as caught:
+        leak_guard.run_git(tmp_path, "status")
+    assert "someone" not in str(caught.value)
+    assert "more" not in str(caught.value)
+
+    Result.stderr = b""
+    with pytest.raises(GuardSetupError, match="exit code 128"):
+        leak_guard.run_git(tmp_path, "status")
+
+
+def test_read_objects_fails_closed(tmp_path: Path) -> None:
+    assert list(leak_guard.read_objects(tmp_path, [])) == []
+    with pytest.raises(GuardSetupError, match="cat-file failed"):
+        list(leak_guard.read_objects(tmp_path, ["0" * 40]))

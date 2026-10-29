@@ -53,10 +53,20 @@ def strings_in(value: Any) -> Iterator[str]:
             yield from strings_in(item)
 
 
-def assert_no_absolute_paths(text: str) -> None:
+def assert_no_absolute_paths(text: str, *local: Path) -> None:
+    """No guard path rule matches, no value is rooted, and no local directory appears.
+
+    The guard's rules target home and drive paths, which temp directories on Linux and macOS are
+    not, so the local directories are also checked by name.
+    """
     assert absolute_path_hits(text) == []
+    for directory in local:
+        assert str(directory) not in text
+        assert directory.as_posix() not in text
+        assert json.dumps(str(directory))[1:-1] not in text
     for value in strings_in(json.loads(text)):
         assert absolute_path_hits(value) == [], value
+        assert not value.startswith(("/", "\\")), value
 
 
 def scan_and_score(
@@ -100,11 +110,13 @@ def test_find_repo_root_walks_up_to_git(tmp_path: Path) -> None:
     assert find_repo_root(worktree) == worktree.resolve()
 
 
-def test_find_repo_root_falls_back_to_start(tmp_path: Path) -> None:
+def test_find_repo_root_falls_back_to_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     start = tmp_path / "plain"
     start.mkdir()
-    root = find_repo_root(start)
-    assert root == start.resolve() or (root / ".git").exists()
+    monkeypatch.setattr(Path, "exists", lambda self: False)
+    assert find_repo_root(start) == start.resolve()
 
 
 def test_repo_relative_and_shown_path(tmp_path: Path) -> None:
@@ -145,7 +157,7 @@ def test_reports_are_identical_from_root_and_subdirectory(
     assert ("detections", "detections.jsonl", True) in paths
     assert ("labels", "datasets/fixtures/labels.jsonl", False) in paths
     assert ("rule", "rules/ADG-0001.yaml", False) in paths
-    assert_no_absolute_paths(first[1].decode("utf-8"))
+    assert_no_absolute_paths(first[1].decode("utf-8"), tmp_path, REPO_ROOT)
     printed = capsys.readouterr()
     assert "<outside repo>/metrics.json" in printed.out
     assert tmp_path.as_posix() not in printed.out + printed.err
@@ -167,9 +179,9 @@ def test_no_absolute_path_in_reports_from_a_directory_outside_the_repo(
     rules, traces, labels = copy_inputs(work)
     monkeypatch.chdir(work)
     detections, metrics = scan_and_score(rules, traces, labels, work / "out", "--root", str(work))
-    assert_no_absolute_paths(metrics.decode("utf-8"))
+    assert_no_absolute_paths(metrics.decode("utf-8"), tmp_path, REPO_ROOT)
     for line in detections.decode("utf-8").splitlines():
-        assert_no_absolute_paths(line)
+        assert_no_absolute_paths(line, tmp_path, REPO_ROOT)
     report = json.loads(metrics)
     assert all(not item["external"] for item in report["inputs"])
     assert {item["path"] for item in report["inputs"]} >= {
@@ -217,7 +229,7 @@ def test_external_inputs_fail_closed_or_record_the_file_name_only(
 
     assert main([*common, *score, "--external-basename"]) == 0
     text = (out / "metrics.json").read_text(encoding="utf-8")
-    assert_no_absolute_paths(text)
+    assert_no_absolute_paths(text, tmp_path, REPO_ROOT)
     report = json.loads(text)
     assert all(item["external"] for item in report["inputs"])
     assert all("/" not in item["path"] for item in report["inputs"])

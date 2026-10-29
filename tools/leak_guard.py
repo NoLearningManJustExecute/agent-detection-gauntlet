@@ -5,7 +5,8 @@ Standalone and standard library only, so this file can be copied into another re
 
 Scopes (combinable):
   --tree       tracked files plus untracked files that are not ignored
-  --history    every commit reachable from any ref: author, committer, message and added lines
+  --history    every commit and annotated tag reachable from any ref: author, committer, tagger,
+               message, added lines, and every blob that the text diff does not show
   --text FILE  one arbitrary file, for example a pull request body before it is posted
   --pr         the current pull request's title, body, reviews and comments (CI, GitHub REST API)
   --all        --tree and --history
@@ -73,6 +74,7 @@ def runner_home_allowed(match: str, origin: str | None) -> bool:
         origin is not None
         and origin.startswith(".github/")
         and re.fullmatch(r"/home/runner(/.*)?", match) is not None
+        and ".." not in match.split("/")
     )
 
 
@@ -87,7 +89,9 @@ class GenericRule:
 GENERIC_RULES: tuple[GenericRule, ...] = (
     GenericRule("windows-path", re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/][^\s\"'`<>|*?]*")),
     GenericRule("unc-path", re.compile(r"(?<![\\\w])\\\\[A-Za-z0-9][\w.$-]*\\[\w.$-]+")),
+    GenericRule("unc-path", re.compile(r"(?<![\\\w])\\{4}[A-Za-z0-9][\w.$-]*\\{2}[\w.$-]+")),
     GenericRule("macos-home-path", re.compile(r"/Users/[A-Za-z0-9._-]+")),
+    GenericRule("windows-home-path", re.compile(r"/[A-Za-z]/users/[A-Za-z0-9._-]+", re.IGNORECASE)),
     GenericRule(
         "linux-home-path",
         re.compile(r"/home/[A-Za-z0-9._-]+[^\s\"'`<>|]*"),
@@ -105,7 +109,9 @@ GENERIC_RULES: tuple[GenericRule, ...] = (
     GenericRule("generated-footer", re.compile("Generated" + r"\s+with", re.IGNORECASE)),
     GenericRule("session-id", re.compile("session" + r"_\w{20,}")),
     GenericRule("dash-character", re.compile("[" + chr(0x2013) + chr(0x2014) + "]")),
-    GenericRule("private-key", re.compile("-{5}BEGIN " + r"(?:[A-Z0-9]+ )*PRIVATE KEY-{5}")),
+    GenericRule(
+        "private-key", re.compile("-{5}BEGIN " + r"(?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-{5}")
+    ),
     GenericRule("github-token", re.compile(r"(?<![A-Za-z0-9])gh[oprsu]_[A-Za-z0-9]{20,}")),
     GenericRule("github-token", re.compile("github" + r"_pat_[A-Za-z0-9_]{20,}")),
     GenericRule("api-key", re.compile(r"(?<![A-Za-z0-9-])sk-[A-Za-z0-9_-]{20,}")),
@@ -305,18 +311,63 @@ class Scanner:
                     Hit(where(line), "denylist", f"private identifier (hash #{entry})")
                 )
 
+    def safe_label(self, path: str) -> str:
+        """``path`` for use in output, or a stand-in when the path itself would leak.
+
+        A path holding a private identifier or any generic match is never printed. The stand-in
+        carries a short digest so separate hits on the same file can still be told apart.
+        """
+        private = self.denylist is not None and any(self.denylist.matches(path))
+        if private or any(rule.pattern.search(path) for rule in GENERIC_RULES):
+            return f"<path withheld {hashlib.sha256(path.encode('utf-8')).hexdigest()[:10]}>"
+        return path
+
+    def scan_path(self, path: str, label: str) -> None:
+        """Scan a file name. Hits are reported under ``label``, which must already be safe."""
+        self.scan_text(path, f"{label} (file name)", origin=path)
+
     def scan_image(self, data: bytes, label: str) -> None:
         self.notices.append(f"{label}: image, needs manual review")
         if any(marker in data for marker in METADATA_MARKERS):
             self.hits.append(Hit(label, "image-metadata", "EXIF or XMP metadata present"))
 
-    def scan_file_bytes(self, data: bytes, label: str) -> None:
-        suffix = Path(label).suffix.lower()
-        if suffix in IMAGE_SUFFIXES:
-            self.scan_image(data, label)
-        if b"\0" in data[:BINARY_SNIFF_BYTES]:
+    def scan_file_bytes(self, data: bytes, path: str, label: str | None = None) -> None:
+        """Scan one file's bytes. ``path`` decides image handling and path-scoped exceptions."""
+        shown = self.safe_label(path) if label is None else label
+        image = Path(path).suffix.lower() in IMAGE_SUFFIXES
+        if image:
+            self.scan_image(data, shown)
+        text = decode_text(data)
+        if text is None:
+            if not image:
+                self.notices.append(f"{shown}: binary, not scanned")
             return
-        self.scan_text(data.decode("utf-8", errors="replace"), label, origin=label)
+        self.scan_text(text, shown, origin=path)
+
+
+_BOMS = (
+    (b"\xff\xfe\x00\x00", "utf-32-le"),
+    (b"\x00\x00\xfe\xff", "utf-32-be"),
+    (b"\xff\xfe", "utf-16-le"),
+    (b"\xfe\xff", "utf-16-be"),
+)
+
+
+def decode_text(data: bytes) -> str | None:
+    """Text of ``data``, honoring a UTF-16 or UTF-32 byte order mark, or None for binary data."""
+    for bom, encoding in _BOMS:
+        if data.startswith(bom):
+            return data[len(bom) :].decode(encoding, errors="replace")
+    if b"\0" in data[:BINARY_SNIFF_BYTES]:
+        return None
+    return data.decode("utf-8", errors="replace")
+
+
+def redact(text: str) -> str:
+    """Mask generic matches, for messages from other programs such as git."""
+    for rule in GENERIC_RULES:
+        text = rule.pattern.sub(lambda match: mask(match.group()), text)
+    return text
 
 
 def run_git(root: Path, *args: str) -> bytes:
@@ -324,14 +375,15 @@ def run_git(root: Path, *args: str) -> bytes:
         ["git", "-c", "core.quotepath=off", *args], cwd=root, capture_output=True, check=False
     )
     if result.returncode != 0:
-        message = result.stderr.decode("utf-8", errors="replace").strip()
-        raise GuardSetupError(f"git {args[0]} failed: {message}")
+        message = result.stderr.decode("utf-8", errors="replace").strip().splitlines()
+        first = redact(message[0]) if message else f"exit code {result.returncode}"
+        raise GuardSetupError(f"git {args[0]} failed: {first}")
     return result.stdout
 
 
 def tree_files(root: Path) -> list[str]:
     output = run_git(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-    return sorted({name for name in output.decode("utf-8").split("\0") if name})
+    return sorted({os.fsdecode(name) for name in output.split(b"\0") if name})
 
 
 def scan_tree(scanner: Scanner, root: Path) -> None:
@@ -339,13 +391,15 @@ def scan_tree(scanner: Scanner, root: Path) -> None:
         path = root / name
         if not path.is_file():
             continue
-        scanner.scan_text(name, f"{name} (file name)", origin=name)
-        scanner.scan_file_bytes(path.read_bytes(), name)
+        label = scanner.safe_label(name)
+        scanner.scan_path(name, label)
+        scanner.scan_file_bytes(path.read_bytes(), name, label)
 
 
 @dataclass
 class FilePatch:
     path: str
+    blob: str | None = None
     lines: list[str] = field(default_factory=list)
     numbers: list[int] = field(default_factory=list)
 
@@ -357,28 +411,41 @@ def _patch_path(header: str) -> str:
     return name[2:] if name.startswith("b/") else name
 
 
-def parse_patch(patch: str) -> list[FilePatch]:
-    """Added lines of a unified diff, grouped by file, with their new-file line numbers."""
+def parse_patch(patch: str) -> tuple[list[FilePatch], set[str]]:
+    """Added lines of a unified diff, grouped by file, with their new-file line numbers.
+
+    Also returns the blob ids whose content the diff showed as text, so the blob scan can skip
+    them. A blob shown as binary (or hidden by a diff attribute) is left for the blob scan.
+    """
     files: list[FilePatch] = []
+    shown_as_text: set[str] = set()
     current: FilePatch | None = None
+    blob: str | None = None
+    in_hunk = False
     number = 0
     for line in patch.splitlines():
         if line.startswith("diff --git "):
-            current = None
-        elif line.startswith("+++ "):
-            current = None if line[4:].strip() == "/dev/null" else FilePatch(_patch_path(line))
-            if current is not None:
+            current, blob, in_hunk = None, None, False
+        elif not in_hunk and line.startswith("index "):
+            found = re.match(r"index [0-9a-f]+\.\.([0-9a-f]+)", line)
+            blob = found.group(1) if found else None
+        elif not in_hunk and line.startswith("+++ "):
+            if line[4:].strip() != "/dev/null":
+                current = FilePatch(_patch_path(line), blob)
                 files.append(current)
+                if blob is not None:
+                    shown_as_text.add(blob)
         elif line.startswith("@@"):
+            in_hunk = True
             found = re.search(r"\+(\d+)", line)
             number = int(found.group(1)) if found else 0
-        elif current is not None and line.startswith("+"):
+        elif in_hunk and current is not None and line.startswith("+"):
             current.lines.append(line[1:])
             current.numbers.append(number)
             number += 1
-        elif line.startswith(" "):
+        elif in_hunk and line.startswith(" "):
             number += 1
-    return files
+    return files, shown_as_text
 
 
 HISTORY_FORMAT = "%x00%H%x00%an%x00%ae%x00%cn%x00%ce%x00%B%x00"
@@ -392,41 +459,107 @@ def scan_history(scanner: Scanner, root: Path) -> None:
         "--all",
         "-p",
         "--unified=0",
+        "--full-index",
         "--no-color",
         "--no-ext-diff",
+        "--no-textconv",
         "--no-renames",
         "--diff-merges=first-parent",
         f"--format={HISTORY_FORMAT}",
     ).decode("utf-8", errors="replace")
     parts = output.split("\0")[1:]
+    shown_as_text: set[str] = set()
     for index in range(0, len(parts) - 6, 7):
         sha, *people, message, patch = parts[index : index + 7]
         commit = f"commit {sha[:12]}"
         for name, value in zip(HISTORY_FIELDS, people, strict=True):
             scanner.scan_text(value, f"{commit} {name}")
         scanner.scan_text(message, f"{commit} message")
-        for file_patch in parse_patch(patch):
-            scanner.scan_text(file_patch.path, f"{commit} {file_patch.path} (file name)")
+        file_patches, text_blobs = parse_patch(patch)
+        shown_as_text |= text_blobs
+        for file_patch in file_patches:
+            label = f"{commit} {scanner.safe_label(file_patch.path)}"
+            scanner.scan_path(file_patch.path, label)
             if file_patch.lines:
                 scanner.scan_text(
                     "\n".join(file_patch.lines),
-                    f"{commit} {file_patch.path}",
+                    label,
                     origin=file_patch.path,
                     line_map=file_patch.numbers,
                 )
-    scan_history_images(scanner, root)
+    scan_tags(scanner, root)
+    scan_blobs(scanner, root, shown_as_text)
 
 
-def scan_history_images(scanner: Scanner, root: Path) -> None:
-    """Check every image blob reachable from any ref for EXIF or XMP metadata."""
+TAG_FORMAT = "%00%(refname:short)%00%(taggername)%00%(taggeremail)%00%(contents)"
+TAG_FIELDS = ("name", "tagger name", "tagger email", "message")
+
+
+def scan_tags(scanner: Scanner, root: Path) -> None:
+    """Tag names, and the tagger and message of every annotated tag."""
+    output = run_git(root, "for-each-ref", f"--format={TAG_FORMAT}", "refs/tags")
+    parts = output.decode("utf-8", errors="replace").split("\0")[1:]
+    for index in range(0, len(parts) - 3, 4):
+        label = f"tag {scanner.safe_label(parts[index].strip())}"
+        for field_name, value in zip(TAG_FIELDS, parts[index : index + 4], strict=True):
+            scanner.scan_text(value, f"{label} {field_name}")
+
+
+def reachable_objects(root: Path) -> dict[str, str]:
+    """Object id to one path, for every object reachable from any ref (trees included)."""
     listing = run_git(root, "rev-list", "--objects", "--all").decode("utf-8", errors="replace")
-    seen: set[str] = set()
+    objects: dict[str, str] = {}
     for line in listing.splitlines():
         sha, _, name = line.partition(" ")
-        if not name or Path(name).suffix.lower() not in IMAGE_SUFFIXES or sha in seen:
+        if name:
+            objects.setdefault(sha, name)
+    return objects
+
+
+def read_objects(root: Path, shas: Sequence[str]) -> Iterator[tuple[str, str, bytes]]:
+    """(id, type, content) for each object, read with one ``git cat-file --batch`` call."""
+    if not shas:
+        return
+    result = subprocess.run(
+        ["git", "cat-file", "--batch"],
+        cwd=root,
+        input="".join(f"{sha}\n" for sha in shas).encode(),
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise GuardSetupError("git cat-file failed")
+    data = result.stdout
+    offset = 0
+    while offset < len(data):
+        header_end = data.index(b"\n", offset)
+        sha, kind, size = data[offset:header_end].decode().split(" ")
+        start = header_end + 1
+        yield sha, kind, data[start : start + int(size)]
+        offset = start + int(size) + 1
+
+
+def scan_blobs(scanner: Scanner, root: Path, shown_as_text: set[str]) -> None:
+    """Every reachable blob the text diff did not show: binaries, UTF-16, diff attributes.
+
+    Images are always checked for metadata, whether or not the diff showed them.
+    """
+    objects = reachable_objects(root)
+    wanted = sorted(
+        sha
+        for sha, name in objects.items()
+        if sha not in shown_as_text or Path(name).suffix.lower() in IMAGE_SUFFIXES
+    )
+    for sha, kind, content in read_objects(root, wanted):
+        if kind != "blob":
             continue
-        seen.add(sha)
-        scanner.scan_image(run_git(root, "cat-file", "blob", sha), f"history blob {name}")
+        name = objects[sha]
+        label = f"history blob {scanner.safe_label(name)}"
+        if sha in shown_as_text:
+            scanner.scan_image(content, label)
+        else:
+            scanner.scan_path(name, label)
+            scanner.scan_file_bytes(content, name, label)
 
 
 # ---------------------------------------------------------------- pull request text
@@ -466,8 +599,11 @@ def pull_request_texts(env: Mapping[str, str]) -> list[tuple[str, str]]:
         raise GuardSetupError("--pr needs GITHUB_TOKEN, GITHUB_REPOSITORY and GITHUB_EVENT_PATH")
     event = json.loads(Path(event_path).read_text(encoding="utf-8"))
     number = event.get("pull_request", {}).get("number")
+    issue = event.get("issue", {})
+    if number is None and issue.get("pull_request"):
+        number = issue.get("number")
     if not isinstance(number, int):
-        raise GuardSetupError("--pr runs only on pull_request events")
+        raise GuardSetupError("--pr runs only on pull request events")
     base = f"{env.get('GITHUB_API_URL', 'https://api.github.com')}/repos/{repository}"
     pr = http_get_json(f"{base}/pulls/{number}", token)
     texts = [("pr title", str(pr.get("title") or "")), ("pr body", str(pr.get("body") or ""))]
@@ -595,6 +731,10 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None
         return 2
     except OSError as exc:
         print(f"error: {exc.strerror or exc.__class__.__name__}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        # Undecodable input or a malformed API response: a setup problem, never a silent pass.
+        print(f"error: cannot process input ({exc.__class__.__name__})", file=sys.stderr)
         return 2
 
 
