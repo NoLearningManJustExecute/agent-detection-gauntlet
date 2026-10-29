@@ -185,6 +185,53 @@ jobs:
           LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
         run: python tools/leak_guard.py --text out/detections.jsonl --text out/metrics.json
 
+  corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Validate corpus traces (every split and K)
+        run: |
+          for dir in datasets/corpus/dev/k* datasets/corpus/heldout/k*; do
+            gauntlet validate-traces "$dir"
+          done
+      # Freeze: the manifest must equal the one in the freeze commit. On a pull request that is
+      # the base branch's copy; on main it is the commit that first added the manifest. A new
+      # corpus (no manifest on the base yet) is checked against its own hashes only.
+      - name: Split manifest unchanged since the freeze
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          manifest=datasets/corpus/SPLIT_MANIFEST.json
+          frozen="$RUNNER_TEMP/frozen-manifest.json"
+          if [ "$EVENT" = "pull_request" ]; then
+            git fetch --no-tags --quiet origin "$BASE_REF"
+            if git cat-file -e "FETCH_HEAD:$manifest" 2>/dev/null; then
+              git show "FETCH_HEAD:$manifest" > "$frozen"
+            fi
+          else
+            first=$(git log --diff-filter=A --format=%H -- "$manifest" | tail -n 1)
+            if [ -n "$first" ]; then git show "$first:$manifest" > "$frozen"; fi
+          fi
+          if [ -f "$frozen" ]; then
+            gauntlet corpus verify --frozen-manifest "$frozen"
+          else
+            echo "no frozen manifest on the base yet; checking hashes only"
+            gauntlet corpus verify
+          fi
+      - name: Dataset card matches the corpus
+        run: gauntlet corpus card --check
+
   audit:
     runs-on: ubuntu-latest
     steps:
