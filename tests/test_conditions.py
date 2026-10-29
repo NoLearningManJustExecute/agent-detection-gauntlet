@@ -5,9 +5,10 @@ from typing import Any
 
 import pytest
 
-from agent_detection_gauntlet.engine.conditions import evaluate, matches, normalize_text
+from agent_detection_gauntlet.engine.conditions import evaluate, matches
 from agent_detection_gauntlet.engine.fields import MISSING, json_equal, resolve
-from agent_detection_gauntlet.rules.model import EventMatch, FieldCondition, Normalization
+from agent_detection_gauntlet.normalize import Normalization, normalize_text
+from agent_detection_gauntlet.rules.model import EventMatch, FieldCondition
 from agent_detection_gauntlet.schema.trace import TraceEvent
 from tests.conftest import make_event
 
@@ -40,7 +41,11 @@ def cond(**data: Any) -> Any:
     ).where
 
 
-def check(event: TraceEvent = EVENT, **data: Any) -> bool:
+def check(**data: Any) -> bool:
+    return check_event(EVENT, **data)
+
+
+def check_event(event: TraceEvent, **data: Any) -> bool:
     condition = cond(**data)
     assert condition is not None
     return evaluate(condition, event)
@@ -127,7 +132,7 @@ def test_normalization_applies_to_regex_subject() -> None:
 
 def test_normalization_applies_to_list_items() -> None:
     event = make_event("s1", "tool.call", {"x.tags": ["Alpha", "BETA"]})
-    assert check(
+    assert check_event(
         event, field="attributes.x.tags", op="contains", value="beta", normalize=["casefold"]
     )
 
@@ -180,21 +185,21 @@ def test_direct_field_condition_model() -> None:
 
 def test_equals_and_in_normalize_list_values() -> None:
     event = make_event("s1", "tool.call", {"x.tags": ["Alpha", "BETA"]})
-    assert check(
+    assert check_event(
         event,
         field="attributes.x.tags",
         op="equals",
         value=["alpha", "beta"],
         normalize=["casefold"],
     )
-    assert check(
+    assert check_event(
         event,
         field="attributes.x.tags",
         op="in",
         value=[["ALPHA", "beta"]],
         normalize=["casefold"],
     )
-    assert not check(event, field="attributes.x.tags", op="equals", value=["alpha", "beta"])
+    assert not check_event(event, field="attributes.x.tags", op="equals", value=["alpha", "beta"])
 
 
 def test_contains_on_list_normalizes_items_once() -> None:
@@ -202,5 +207,7 @@ def test_contains_on_list_normalizes_items_once() -> None:
     letter = chr(0x210C)
     event = make_event("s1", "tool.call", {"x.tags": [letter], "x.text": letter})
     steps = ["casefold", "nfkc"]
-    assert check(event, field="attributes.x.tags", op="contains", value=letter, normalize=steps)
-    assert check(event, field="attributes.x.text", op="equals", value=letter, normalize=steps)
+    assert check_event(
+        event, field="attributes.x.tags", op="contains", value=letter, normalize=steps
+    )
+    assert check_event(event, field="attributes.x.text", op="equals", value=letter, normalize=steps)

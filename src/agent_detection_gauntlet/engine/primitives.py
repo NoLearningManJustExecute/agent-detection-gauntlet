@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pydantic import JsonValue
 
 from agent_detection_gauntlet.engine.conditions import matches
-from agent_detection_gauntlet.engine.fields import MISSING, json_equal, resolve
+from agent_detection_gauntlet.engine.fields import MISSING, _Missing, json_equal, resolve
 from agent_detection_gauntlet.io.jsonl import canonical_json
 from agent_detection_gauntlet.rules.model import (
     EventMatch,
@@ -193,7 +193,7 @@ def run_threshold(spec: ThresholdSpec, context: TraceContext) -> list[Hit]:
         values: set[str] = set()
         for index in indices:
             value = resolve(events[index], spec.distinct)
-            if value is MISSING:
+            if isinstance(value, _Missing):
                 continue
             counted.append(index)
             values.add(canonical_json(_number_key(value)))

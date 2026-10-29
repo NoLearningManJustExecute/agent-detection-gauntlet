@@ -28,6 +28,8 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.17.3",
     "pip-audit>=2.10.1",
+    "mypy>=2.4.1",
+    "types-PyYAML>=6.0.12.20260906",
 ]
 
 [project.scripts]
@@ -42,7 +44,7 @@ agent_detection_gauntlet = ["py.typed", "catalog/*.yaml"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests"]
+src = ["src", "."]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
@@ -54,8 +56,14 @@ line-ending = "lf"
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+files = ["src", "tests", "tools"]
+
 [tool.coverage.run]
-source = ["agent_detection_gauntlet"]
+source = ["agent_detection_gauntlet", "tools"]
 branch = true
 
 [tool.coverage.report]
