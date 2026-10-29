@@ -7,6 +7,7 @@ from pathlib import Path
 
 from agent_detection_gauntlet.errors import InputError
 from agent_detection_gauntlet.io.jsonl import read_jsonl
+from agent_detection_gauntlet.paths import shown_path
 from agent_detection_gauntlet.schema.labels import LabelRecord
 
 
@@ -23,7 +24,7 @@ def load_labels(paths: Sequence[Path]) -> dict[str, LabelRecord]:
                 raise InputError(
                     path,
                     f"trace {record.trace_id!r} is already labeled at "
-                    f"{first_path.as_posix()}:{first_line}",
+                    f"{shown_path(first_path)}:{first_line}",
                     line,
                 )
             labels[record.trace_id] = record

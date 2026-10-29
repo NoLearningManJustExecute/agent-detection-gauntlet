@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field, model_validator
 
 from agent_detection_gauntlet.schema.common import STRICT_MODEL, RuleId, SemVer, Tier
 from agent_detection_gauntlet.schema.labels import Split
@@ -92,12 +93,36 @@ class TierMetrics(BaseModel):
 InputRole = Literal["rule", "trace", "detections", "labels"]
 
 
+def _check_report_path(value: str) -> str:
+    """Report paths are repository-relative with / separators: never absolute, never escaping."""
+    if (
+        value.startswith("/")
+        or "\\" in value
+        or re.match(r"[A-Za-z]:", value)
+        or any(part in ("", ".", "..") for part in value.split("/"))
+    ):
+        raise ValueError("path must be relative to the repository root, with / separators")
+    return value
+
+
 class InputFile(BaseModel):
     model_config = STRICT_MODEL
 
     role: InputRole
-    path: str
+    path: Annotated[str, AfterValidator(_check_report_path)] = Field(
+        description="Path relative to the repository root, or only the file name when external."
+    )
+    external: bool = Field(
+        description="True when the file lies outside the repository root. Only its file name "
+        "is recorded, and only when --external-basename was given."
+    )
     sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+    @model_validator(mode="after")
+    def _check_external(self) -> InputFile:
+        if self.external and "/" in self.path:
+            raise ValueError("an external input records its file name only")
+        return self
 
 
 class RuleRef(BaseModel):

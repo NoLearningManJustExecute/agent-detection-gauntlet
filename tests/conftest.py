@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 import yaml
 
+from agent_detection_gauntlet.paths import set_repo_root
 from agent_detection_gauntlet.rules.model import Rule
 from agent_detection_gauntlet.schema.trace import Trace, TraceEvent, event_order_key
 
@@ -126,7 +127,9 @@ def write_rule(directory: Path, data: dict[str, Any], name: str | None = None) -
     return path
 
 
-def taint_trace_events(trace_id: str, *, trust: str = "untrusted", linked: bool = True) -> list:
+def taint_trace_events(
+    trace_id: str, *, trust: str = "untrusted", linked: bool = True
+) -> list[dict[str, Any]]:
     """retrieval -> llm.request -> llm.response -> tool.call send_email."""
     send_refs = ["s4"] if linked else ["s1"]
     return [
@@ -153,3 +156,11 @@ def fixture_dir(tmp_path: Path) -> Path:
     write_lines(directory / "t-tp.jsonl", taint_trace_events("t-tp"))
     write_lines(directory / "t-fp.jsonl", taint_trace_events("t-fp", trust="trusted"))
     return directory
+
+
+@pytest.fixture(autouse=True)
+def _reset_repo_root() -> Iterator[None]:
+    """Each test starts with root discovery, whatever an earlier test fixed."""
+    set_repo_root(None)
+    yield
+    set_repo_root(None)

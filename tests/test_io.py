@@ -28,7 +28,7 @@ def test_malformed_line_reports_line_number(tmp_path: Path) -> None:
         read_jsonl(path, TraceEvent)
     assert info.value.line == 2
     assert "malformed JSON" in str(info.value)
-    assert str(info.value).startswith(f"{path.as_posix()}:2:")
+    assert str(info.value).startswith("<outside repo>/t.jsonl:2:")
 
 
 def test_bad_enum_reports_line_number(tmp_path: Path) -> None:

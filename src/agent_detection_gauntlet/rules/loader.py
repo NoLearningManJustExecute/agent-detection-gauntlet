@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from agent_detection_gauntlet.errors import InputError
 from agent_detection_gauntlet.io.jsonl import format_validation_error
+from agent_detection_gauntlet.paths import shown_path
 from agent_detection_gauntlet.rules.model import Rule
 
 RULE_SUFFIXES: tuple[str, ...] = (".yaml", ".yml")
@@ -81,13 +82,20 @@ def rule_files(directory: Path) -> list[Path]:
     return files
 
 
+def _reason(exc: OSError | UnicodeDecodeError) -> str:
+    """Why a file could not be read, without the file name (callers add a safe path)."""
+    if isinstance(exc, OSError):
+        return exc.strerror or type(exc).__name__
+    return str(exc)
+
+
 def load_rule_file(path: Path) -> Rule:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        raise InputError(path, f"cannot read rule file: {exc}") from exc
+        raise InputError(path, f"cannot read rule file: {_reason(exc)}") from exc
     try:
-        document = load_yaml_document(text, path.as_posix())
+        document = load_yaml_document(text, shown_path(path))
         return Rule.model_validate_json(document)
     except ValidationError as exc:
         raise InputError(path, format_validation_error(exc)) from exc

@@ -80,6 +80,9 @@ Notes:
 - `validate-rules`, `scan` and `metrics` run each rule against its fixtures before doing
   anything else. Fixtures are read from `datasets/fixtures/traces` by default; use
   `--fixtures` to point elsewhere.
+- Every path recorded in a report or printed in a log is relative to the repository root, so
+  reports do not depend on the working directory. `metrics` refuses inputs outside the root
+  unless `--external-basename` is given, which records their file names only.
 - `out/` is ignored by git. Any numbers produced from the fixtures are pipeline checks on
   synthetic data, not findings.
 
@@ -110,6 +113,8 @@ Notes:
 | `datasets/fixtures/` | Synthetic fixture traces and their labels |
 | `schemas/` | Generated JSON Schemas for every file format |
 | `tests/` | Test suite |
+| `tools/leak_guard.py` | Standalone guard against personal data, local paths and secrets |
+| `.githooks/` | Pre-commit and pre-push hooks that run the leak guard |
 | `docs/` | Format, engine, metrics and methodology documentation |
 
 ## Documentation
@@ -121,6 +126,7 @@ Notes:
 - [docs/methodology.md](docs/methodology.md): measurement principles and limitations
 - [ROADMAP.md](ROADMAP.md): phases and gates
 - [SECURITY.md](SECURITY.md): security scope and reporting
+- [CONTRIBUTING.md](CONTRIBUTING.md): setup, checks, the leak guard and git hooks
 
 ## License
 

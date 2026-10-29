@@ -17,6 +17,7 @@ from agent_detection_gauntlet.engine.executor import rule_hits
 from agent_detection_gauntlet.engine.primitives import TraceContext
 from agent_detection_gauntlet.errors import InputError
 from agent_detection_gauntlet.io.traces import load_traces
+from agent_detection_gauntlet.paths import shown_path
 from agent_detection_gauntlet.rules.loader import LoadedRule, load_rule_file, rule_files
 from agent_detection_gauntlet.schema.trace import Trace
 
@@ -61,7 +62,7 @@ class ValidationReport:
 
 
 def _source(source: Path | str) -> str:
-    return source.as_posix() if isinstance(source, Path) else source
+    return shown_path(source) if isinstance(source, Path) else source
 
 
 def load_rule_set(directory: Path, report: ValidationReport) -> None:

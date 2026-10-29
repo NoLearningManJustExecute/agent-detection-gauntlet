@@ -59,7 +59,13 @@
     "InputFile": {
       "additionalProperties": false,
       "properties": {
+        "external": {
+          "description": "True when the file lies outside the repository root. Only its file name is recorded, and only when --external-basename was given.",
+          "title": "External",
+          "type": "boolean"
+        },
         "path": {
+          "description": "Path relative to the repository root, or only the file name when external.",
           "title": "Path",
           "type": "string"
         },
@@ -82,6 +88,7 @@
       "required": [
         "role",
         "path",
+        "external",
         "sha256"
       ],
       "title": "InputFile",

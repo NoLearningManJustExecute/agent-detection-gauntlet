@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 
 from agent_detection_gauntlet.errors import MetricsInputError
-from agent_detection_gauntlet.metrics import compute
 from agent_detection_gauntlet.metrics.compute import (
     ScoringInputs,
     build_report,
@@ -16,18 +15,20 @@ from agent_detection_gauntlet.metrics.compute import (
     compute_metrics,
     compute_rates,
     describe_inputs,
-    display_path,
     git_provenance,
     make_rate,
 )
-from agent_detection_gauntlet.metrics.report import Confusion
+from agent_detection_gauntlet.metrics.report import Confusion, InputFile
 from agent_detection_gauntlet.metrics.stats import Z_95, ratio, wilson_interval
+from agent_detection_gauntlet.paths import set_repo_root
 from agent_detection_gauntlet.schema.detection import Detection
 from agent_detection_gauntlet.schema.labels import LabelRecord, Split
 from tests.conftest import make_rule
 
 
-def label(trace_id: str, verdict: str, succeeded: bool | None = None, split: str = "heldout"):
+def label(
+    trace_id: str, verdict: str, succeeded: bool | None = None, split: str = "heldout"
+) -> LabelRecord:
     return LabelRecord.model_validate_json(
         json.dumps(
             {
@@ -222,6 +223,7 @@ def test_missing_dev_traces_are_allowed_when_scoring_heldout() -> None:
 
 
 def test_build_report_records_inputs_and_rules(tmp_path: Path) -> None:
+    set_repo_root(tmp_path)
     a = tmp_path / "b.jsonl"
     a.write_bytes(b"x")
     b = tmp_path / "a.yaml"
@@ -243,7 +245,7 @@ def test_git_provenance_handles_missing_git(monkeypatch: pytest.MonkeyPatch) -> 
     def fail(*args: Any, **kwargs: Any) -> Any:
         raise OSError("no git")
 
-    monkeypatch.setattr(compute.subprocess, "run", fail)
+    monkeypatch.setattr("agent_detection_gauntlet.metrics.compute.subprocess.run", fail)
     assert git_provenance() == (None, None)
 
 
@@ -279,18 +281,63 @@ def test_detections_must_reproduce_the_scan() -> None:
             check_detections_reproduce(loaded, expected)
 
 
-def test_input_paths_are_relative_to_working_directory(
+def test_input_paths_are_relative_to_repository_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "sub").mkdir()
-    (tmp_path / "sub" / "x.jsonl").write_bytes(b"")
+    root = tmp_path / "repo"
+    (root / "sub").mkdir(parents=True)
+    (root / "sub" / "x.jsonl").write_bytes(b"")
+    monkeypatch.chdir(root / "sub")
     entries = describe_inputs(
         [
-            ("trace", Path("sub/x.jsonl")),
-            ("trace", Path("./sub/x.jsonl")),
-            ("trace", tmp_path / "sub" / "x.jsonl"),
-        ]
+            ("trace", Path("x.jsonl")),
+            ("trace", Path("../sub/./x.jsonl")),
+            ("trace", root / "sub" / "x.jsonl"),
+        ],
+        root=root,
     )
-    assert [entry.path for entry in entries] == ["sub/x.jsonl"]
-    assert display_path(tmp_path.parent) == tmp_path.parent.resolve().as_posix()
+    assert [(entry.path, entry.external) for entry in entries] == [("sub/x.jsonl", False)]
+
+
+def test_inputs_outside_the_root_fail_closed_unless_external(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "elsewhere" / "labels.jsonl"
+    outside.parent.mkdir()
+    outside.write_bytes(b"x")
+    with pytest.raises(MetricsInputError, match="outside the repository root") as caught:
+        describe_inputs([("labels", outside)], root=root)
+    assert str(tmp_path) not in str(caught.value)
+    assert tmp_path.as_posix() not in str(caught.value)
+    assert "<outside repo>/labels.jsonl" in str(caught.value)
+
+    [entry] = describe_inputs([("labels", outside)], root=root, external_basename=True)
+    assert (entry.path, entry.external) == ("labels.jsonl", True)
+    assert entry.sha256 == "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+
+    twin = tmp_path / "other" / "labels.jsonl"
+    twin.parent.mkdir()
+    twin.write_bytes(b"y")
+    with pytest.raises(MetricsInputError, match=r"would both be recorded as 'labels\.jsonl'"):
+        describe_inputs([("labels", outside), ("labels", twin)], root=root, external_basename=True)
+
+
+@pytest.mark.parametrize(
+    ("path", "external"),
+    [
+        ("/abs/x.jsonl", False),
+        ("C" + ":/x.jsonl", False),
+        ("c" + ":x.jsonl", False),
+        ("a" + chr(92) + "b.jsonl", False),
+        ("../x.jsonl", False),
+        ("a//b.jsonl", False),
+        ("./x.jsonl", False),
+        ("", False),
+        ("sub/x.jsonl", True),
+    ],
+)
+def test_report_paths_must_be_repository_relative(path: str, external: bool) -> None:
+    with pytest.raises(ValueError):
+        InputFile.model_validate(
+            {"role": "trace", "path": path, "external": external, "sha256": "0" * 64}
+        )
