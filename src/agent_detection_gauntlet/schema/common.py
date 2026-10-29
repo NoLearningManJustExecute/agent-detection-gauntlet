@@ -18,8 +18,8 @@ from pydantic import (
 
 # Version written by this package. Every reader also accepts the earlier versions listed in
 # SUPPORTED_SCHEMA_VERSIONS, so files written under 0.1 stay readable.
-SCHEMA_VERSION: Final = "0.2"
-SchemaVersion = Literal["0.1", "0.2"]
+SCHEMA_VERSION: Final = "0.3"
+SchemaVersion = Literal["0.1", "0.2", "0.3"]
 SUPPORTED_SCHEMA_VERSIONS: Final = get_args(SchemaVersion)
 
 # Every model is strict: no unknown keys, no type coercion, immutable after validation.

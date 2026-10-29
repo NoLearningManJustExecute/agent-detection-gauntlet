@@ -216,7 +216,7 @@ def test_inputs_must_line_up(overrides: dict[str, Any], message: str) -> None:
 
 
 def test_unassigned_split_fails_closed() -> None:
-    unassigned = {**label("u1", "benign").model_dump(mode="json"), "schema_version": "0.2"}
+    unassigned = {**label("u1", "benign").model_dump(mode="json"), "schema_version": "0.3"}
     unassigned["split"] = None
     record = LabelRecord.model_validate_json(json.dumps(unassigned))
     assert record.split is None
