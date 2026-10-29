@@ -29,10 +29,34 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-      - name: Scan tree and full history
+      # Blocking gate: only the commits this change adds. The full scan runs on a schedule.
+      - name: Scan new commits
         env:
           LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
-        run: python tools/leak_guard.py --all
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            python tools/leak_guard.py --range "$PR_BASE..$PR_HEAD"
+          elif [ -z "$PUSH_BEFORE" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            python tools/leak_guard.py --history
+          else
+            python tools/leak_guard.py --range "$PUSH_BEFORE..$PUSH_AFTER"
+          fi
+      - name: Flag baseline changes for review
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --quiet "$PR_BASE" "$PR_HEAD" -- .leakguard-baseline .leakguard-allow; then
+            echo "leak guard baseline and allowlist unchanged"
+          else
+            echo "::warning::.leakguard-baseline or .leakguard-allow changed: review every added entry"
+          fi
       - name: Scan pull request text
         if: github.event_name == 'pull_request'
         env:
