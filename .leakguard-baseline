@@ -1,0 +1,10 @@
+# Leak guard history baseline. Fingerprints only: <commit> <rule> <line> <path>.
+# Covers commits at or before the cutoff, which must be on the default branch. Never the working
+# tree, never private list hits, never email addresses. Range scans read this file from the range
+# base, so a change cannot approve itself. Every entry was confirmed as a false positive.
+#
+# 99bf3c9: the guard's own pattern for the CI runner home directory, and the old allowlist line
+#   that named it.
+cutoff 99bf3c9f9149d806a3a528efed983b89239fc3c0
+99bf3c9f9149d806a3a528efed983b89239fc3c0 linux-home-path 4 .leakguard-allow
+99bf3c9f9149d806a3a528efed983b89239fc3c0 linux-home-path 76 tools/leak_guard.py

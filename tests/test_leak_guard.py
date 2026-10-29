@@ -6,10 +6,16 @@ trips the guard itself when the repository is scanned.
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import io
 import json
+import re
+import struct
 import subprocess
 import urllib.request
+import zipfile
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +24,7 @@ import pytest
 from tools import leak_guard
 from tools.leak_guard import (
     Allowlist,
+    Baseline,
     Denylist,
     GuardSetupError,
     Scanner,
@@ -45,6 +52,18 @@ DENYLIST_TEXT = (
     f"hash {digest(SECRET_WORD)}\n"
     f"hash {digest(SECRET_PAIR)}\n"
 )
+
+
+def noise(length: int, seed: str = "a") -> str:
+    """Deterministic high-entropy letters and digits, standing in for a real credential body."""
+    raw = base64.b64encode(hashlib.sha512(seed.encode()).digest() * 2).decode()
+    return "".join(char for char in raw if char.isalnum())[:length]
+
+
+def pem(kind: str, suffix: str = "") -> str:
+    """A key block with header and body, assembled so this file holds no literal key."""
+    header = "-" * 5 + "BEGIN " + kind + "PRIVATE KEY" + suffix + "-" * 5
+    return f"{header}\n{noise(64, kind)}\n{noise(64, kind + '2')}\n"
 
 
 def denylist() -> Denylist:
@@ -86,22 +105,23 @@ def run_guard(
         ("alex" + AT + "gmail.com", "email-address"),
         ("someone" + AT + "github.com", "email-address"),
         ("x" + AT + "example.co", "email-address"),
-        ("x" + AT + "mail.example.net", "email-address"),
+        ("a" + AT + "example.com.evil.org", "email-address"),
         ("see " + "anthropic" + ".com", "forbidden-domain"),
         ("Claude" + ".AI/x", "forbidden-domain"),
         ("Generated" + "  with a tool", "generated-footer"),
         ("session" + "_" + "a" * 24, "session-id"),
         ("a " + chr(0x2014) + " b", "dash-character"),
         ("2" + chr(0x2013) + "3", "dash-character"),
-        ("-" * 5 + "BEGIN OPENSSH " + "PRIVATE KEY" + "-" * 5, "private-key"),
-        ("-" * 5 + "BEGIN " + "PRIVATE KEY" + "-" * 5, "private-key"),
-        ("ghp" + "_" + "A1" * 18, "github-token"),
-        ("gho" + "_" + "b2" * 18, "github-token"),
-        ("github" + "_pat_" + "C3" * 15, "github-token"),
-        ("sk" + "-" + "proj_" + "x" * 30, "api-key"),
+        (pem("OPENSSH "), "private-key"),
+        (pem(""), "private-key"),
+        (pem("RSA ").replace("\n", "\\n"), "private-key"),
+        ("ghp" + "_" + noise(36), "github-token"),
+        ("gho" + "_" + noise(36, "b"), "github-token"),
+        ("github" + "_pat_" + noise(40, "c"), "github-token"),
+        ("sk" + "-" + "proj_" + noise(30, "d"), "api-key"),
         ("xox" + "b-" + "1234567890-abc", "slack-token"),
         ("xox" + "p-" + "1234567890-abc", "slack-token"),
-        ("AKIA" + "ABCDEFGH12345678", "aws-access-key"),
+        ("AKIA" + hashlib.sha256(b"k").hexdigest()[:16].upper(), "aws-access-key"),
     ],
 )
 def test_generic_rule_catches(text: str, rule: str) -> None:
@@ -162,7 +182,8 @@ def test_generic_hit_reports_line_and_masked_match() -> None:
     scanner = Scanner(denylist=None)
     scanner.scan_text("ok\nmail " + "alex" + AT + "gmail.com\n", "notes.md")
     [hit] = scanner.hits
-    assert hit.render() == "notes.md:2: email-address: al****om"
+    assert hit.render(show_match=True) == "notes.md:2: email-address: al****om"
+    assert hit.render(show_match=False) == "notes.md:2: email-address"
 
 
 # ---------------------------------------------------------------- denylist
@@ -381,11 +402,11 @@ def test_tree_scan(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert code == 1
     assert "untracked.md:1: email-address" in output
     assert "ignored.txt" not in output
-    assert "notice: blob.bin: binary, not scanned" in output
-    assert "blob.bin:" not in output.replace("notice: blob.bin: binary", "")
+    assert "notice: blob.bin: binary, scanned for embedded text" in output
+    assert "blob.bin (embedded text):1: email-address" in output
     assert "notice: plain.png: image, needs manual review" in output
     assert "plain.png: image-metadata" not in output
-    assert "photo.jpg: image-metadata: EXIF or XMP metadata present" in output
+    assert "photo.jpg: image-metadata: metadata present" in output
     assert "icon.svg: image-metadata" in output
     assert "<path withheld " in output
     assert "(file name):1: denylist: private identifier (hash #1)" in output
@@ -613,7 +634,7 @@ def test_find_root_and_display_name(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
 
 def test_repository_is_clean_under_its_own_guard(capsys: pytest.CaptureFixture[str]) -> None:
-    # The private list is not available everywhere, so this checks generic rules on the tree.
+    # Uses the private list when it is available locally, generic rules only otherwise.
     code, output = run_guard(["--tree"], {}, capsys)
     assert code == 0, output
 
@@ -627,7 +648,7 @@ def test_repository_is_clean_under_its_own_guard(capsys: pytest.CaptureFixture[s
         (BACKSLASH * 4 + "fileserver" + BACKSLASH * 2 + "share", "unc-path"),
         ("cd /c/" + "users/alex", "windows-home-path"),
         ("/mnt/c/" + "Users/alex", "windows-home-path"),
-        ("-" * 5 + "BEGIN PGP " + "PRIVATE KEY" + " BLOCK" + "-" * 5, "private-key"),
+        (pem("PGP ", " BLOCK"), "private-key"),
     ],
 )
 def test_audit_pattern_gaps_are_closed(text: str, rule: str) -> None:
@@ -680,7 +701,7 @@ def test_history_scans_blobs_the_diff_hides_and_tags(
     assert "history blob hidden.dat:1: email-address" in output
     assert "history blob wide.txt:1: email-address" in output
     assert "tag v1 message:1: email-address" in output
-    assert "notice: history blob blob.bin: binary, not scanned" in output
+    assert "notice: history blob blob.bin: binary, scanned for embedded text" in output
     assert "(file name):1: denylist: private identifier (hash #1)" in output
     assert SECRET_WORD not in output.lower()
 
@@ -742,3 +763,612 @@ def test_read_objects_fails_closed(tmp_path: Path) -> None:
     assert list(leak_guard.read_objects(tmp_path, [])) == []
     with pytest.raises(GuardSetupError, match="cat-file failed"):
         list(leak_guard.read_objects(tmp_path, ["0" * 40]))
+
+
+# ---------------------------------------------------------------- structure, scope, baseline
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "-" * 5 + "BEGIN RSA " + "PRIVATE KEY" + "-" * 5,
+        "-" * 5 + "BEGIN " + "PRIVATE KEY" + "-" * 5 + "\n" + "A" * 64 + "\n",
+        "AKIA" + "IOSFODNN7" + "EXAMPLE",
+        "ghp" + "_" + "a1" * 18,
+        "sk" + "-" + "proj_" + "x" * 30,
+        "github" + "_pat_" + "dummy" + noise(30),
+        "Evidence regen" + "erated with this code",
+        "C" + ":/" + "Program Files/Google/Chrome/Application/chrome.exe",
+        "C" + ":" + BACKSLASH + "Windows" + BACKSLASH + "win.ini",
+        "C" + ":/" + "path/to/chrome.exe",
+        "auditor" + AT + "exfil.example.com",
+    ],
+)
+def test_structured_rules_ignore_placeholders_and_system_paths(text: str) -> None:
+    assert rules_hit(text) == []
+
+
+def test_entropy_and_looks_secret() -> None:
+    assert leak_guard.entropy("") == 0.0
+    assert leak_guard.entropy("aaaa") == 0.0
+    assert leak_guard.entropy("abcd") == 2.0
+    assert leak_guard.looks_secret(noise(32))
+    assert not leak_guard.looks_secret("a" * 32)
+    assert not leak_guard.looks_secret("abcdefghijklmnopqrstuvwxyzabcdef")
+    assert not leak_guard.looks_secret(noise(20) + "EXAMPLE")
+
+
+def test_windows_paths_are_scoped_in_fixtures_and_docs() -> None:
+    probe = "C" + ":" + BACKSLASH + "x"
+    personal = "C" + ":" + BACKSLASH + "Users" + BACKSLASH + "alex" + BACKSLASH + "a.txt"
+    for origin in ("tests/test_a.py", "docs/guide.md", "pkg/tests/data.json", "a/fixtures/x.txt"):
+        assert rules_hit(probe, origin=origin) == []
+        assert rules_hit(personal, origin=origin) == ["windows-path"]
+    for other in ("src/app.py", "tests.py", None):
+        assert rules_hit(probe, origin=other) == ["windows-path"]
+    assert not leak_guard.is_fixture_path("README.md")
+
+
+def test_ci_output_shows_rule_and_location_only(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sample = tmp_path / "a.md"
+    address = "alex" + AT + "gmail.com"
+    sample.write_text(f"mail {address}\n{SECRET_WORD}\n", encoding="utf-8")
+    env = {"CI": "true", "LEAK_DENYLIST": DENYLIST_TEXT}
+    code, output = run_guard(["--root", str(tmp_path), "--text", str(sample)], env, capsys)
+    assert code == 1
+    assert "a.md:1: email-address\n" in output
+    assert "al****om" not in output
+    assert "a.md:2: denylist: private identifier (hash #1)" in output
+    assert SECRET_WORD not in output
+
+
+def png(*chunks: tuple[bytes, bytes]) -> bytes:
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        crc = zlib.crc32(kind + data) & 0xFFFFFFFF
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", crc)
+
+    body = [(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 0, 0, 0, 0))]
+    body += list(chunks)
+    body += [(b"IDAT", zlib.compress(b"\0\0")), (b"IEND", b"")]
+    return leak_guard.PNG_SIGNATURE + b"".join(chunk(kind, data) for kind, data in body)
+
+
+def test_png_metadata_detection_and_stripping(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clean = png((b"sRGB", b"\0"))
+    credentials = png((b"caBX", b"jumb provenance"), (b"tEXt", b"Software\0tool"))
+    assert not leak_guard.image_metadata(clean)
+    assert leak_guard.image_metadata(credentials)
+    assert leak_guard.image_metadata(png((b"iTXt", b"x")))
+    assert leak_guard.image_metadata(b"\xff\xd8 jumbf c2pa manifest")
+    stripped, removed = leak_guard.strip_png(credentials)
+    assert removed == 2
+    assert stripped == png()
+    assert not leak_guard.image_metadata(stripped)
+
+    target = tmp_path / "shot.png"
+    target.write_bytes(credentials)
+    code, output = run_guard(["--root", str(tmp_path), "--strip-png", str(target)], {}, capsys)
+    assert code == 0
+    assert "stripped shot.png: 2 metadata chunk(s) removed" in output
+    assert target.read_bytes() == png()
+
+    target.write_bytes(b"not a png")
+    code, output = run_guard(["--root", str(tmp_path), "--strip-png", str(target)], {}, capsys)
+    assert (code, "not a PNG file" in output) == (2, True)
+
+
+def head(repo: Path) -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+def test_baseline_parse_rules() -> None:
+    sha = "a" * 40
+    good = f"# fingerprints only\ncutoff {sha}\n{sha} dash-character 3 docs/x.md\n"
+    good += f"{sha} dash-character 1 :message\n{sha} windows-path 2 dir with space/a b.md\n"
+    baseline = Baseline.parse(good, denylist())
+    assert baseline.cutoff == sha
+    assert baseline.covers((sha, "windows-path", 2, "dir with space/a b.md"))
+    assert not baseline.covers((sha, "windows-path", 3, "dir with space/a b.md"))
+    bad = {
+        f"cutoff {sha}\n{sha} denylist 1 a.md": "denylist hits can never be baselined",
+        f"cutoff {sha}\n{sha} email-address 1 :author email": "email-address hits can never",
+        f"cutoff {sha}\n{sha} no-such-rule 1 a.md": "unknown rule",
+        f"cutoff {sha}\n{sha} dash-character x a.md": "line a number",
+        f"cutoff {sha}\nabc dash-character 1 a.md": "commit must be 40 hex",
+        f"cutoff {sha}\n{sha} dash-character 1 /etc/a.md": "repository-relative",
+        f"cutoff {sha}\n{sha} dash-character 1 ../a.md": "repository-relative",
+        f"cutoff {sha}\n{sha} dash-character 1 a" + BACKSLASH + "b.md": "repository-relative",
+        f"cutoff {sha}\n{sha} dash-character 1 C" + ":/a.md": "repository-relative",
+        f"cutoff {sha}\n{sha} dash-character 1": "use '<commit>",
+        f"cutoff {sha}\n{sha} dash-character 1 docs/{SECRET_WORD}.md": "private identifier",
+        f"{sha} dash-character 1 a.md": "needs a cutoff",
+        f"cutoff {sha}\ncutoff {sha}": "one 'cutoff",
+        "cutoff abc": "one 'cutoff",
+    }
+    for text, message in bad.items():
+        with pytest.raises(GuardSetupError, match=message):
+            Baseline.parse(text, denylist())
+
+
+def test_history_baseline_suppresses_only_pinned_generic_hits(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dash = chr(0x2014)
+    (repo / "a.md").write_text(f"one {dash} two\n{SECRET_WORD} {dash}\n", encoding="utf-8")
+    git(repo, "add", "a.md")
+    git(repo, "commit", "-q", "-m", "old")
+    old = head(repo)
+    env = {"LEAK_DENYLIST": DENYLIST_TEXT}
+
+    code, output = run_guard(["--root", str(repo), "--emit-baseline", "HEAD"], env, capsys)
+    assert code == 0
+    lines = output.splitlines()
+    assert lines[0] == f"cutoff {old}"
+    # Line 2 also holds a private identifier, so it is never a candidate.
+    assert lines[1:] == [f"{old} dash-character 1 a.md"]
+    assert SECRET_WORD not in output
+    (repo / ".leakguard-baseline").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    (repo / "b.md").write_text(f"new {dash}\n", encoding="utf-8")
+    git(repo, "add", "b.md", ".leakguard-baseline")
+    git(repo, "commit", "-q", "-m", "new")
+
+    code, output = run_guard(["--root", str(repo), "--history"], env, capsys)
+    assert code == 1
+    assert f"commit {old[:12]} a.md:1: dash-character" not in output
+    assert f"commit {old[:12]} a.md:2: dash-character" in output
+    assert f"commit {old[:12]} a.md:2: denylist: private identifier (hash #1)" in output
+    assert " b.md:1: dash-character" in output
+    assert "1 baselined" in output
+
+    # The working tree is never covered by the baseline.
+    code, output = run_guard(["--root", str(repo), "--tree"], env, capsys)
+    assert "a.md:1: dash-character" in output
+
+    # A range after the cutoff sees only its own commits.
+    code, output = run_guard(["--root", str(repo), "--range", f"{old}..HEAD"], env, capsys)
+    assert code == 1
+    assert " b.md:1: dash-character" in output
+    assert " a.md" not in output
+    assert "(range;" in output
+
+
+def test_baseline_entries_must_precede_the_cutoff(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (repo / "a.md").write_text("x\n", encoding="utf-8")
+    git(repo, "add", "a.md")
+    git(repo, "commit", "-q", "-m", "one")
+    first = head(repo)
+    git(repo, "commit", "-q", "--allow-empty", "-m", "two")
+    second = head(repo)
+    baseline = repo / ".leakguard-baseline"
+    env = {"LEAK_DENYLIST": DENYLIST_TEXT}
+
+    baseline.write_text(f"cutoff {first}\n{second} dash-character 1 a.md\n", "utf-8")
+    code, output = run_guard(["--root", str(repo), "--history"], env, capsys)
+    assert (code, "is not at or before the cutoff" in output) == (2, True)
+
+    baseline.write_text(f"cutoff {'b' * 40}\n", "utf-8")
+    code, output = run_guard(["--root", str(repo), "--history"], env, capsys)
+    assert (code, "cutoff commit is not in this clone" in output) == (2, True)
+
+    # The baseline is not even read for scopes it cannot apply to.
+    code, output = run_guard(["--root", str(repo), "--tree"], env, capsys)
+    assert code == 0
+
+
+def test_history_image_metadata_is_fingerprinted_and_baselinable(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (repo / "shot.png").write_bytes(png((b"caBX", b"provenance")))
+    git(repo, "add", "shot.png")
+    git(repo, "commit", "-q", "-m", "add image")
+    sha = head(repo)
+    env = {"LEAK_DENYLIST": DENYLIST_TEXT}
+    code, output = run_guard(["--root", str(repo), "--emit-baseline", sha], env, capsys)
+    assert f"{sha} image-metadata 0 shot.png" in output.splitlines()
+    (repo / ".leakguard-baseline").write_text(output, encoding="utf-8")
+    code, output = run_guard(["--root", str(repo), "--history"], env, capsys)
+    assert (code, "1 baselined" in output) == (0, True)
+
+
+def test_range_must_be_a_range(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    code, output = run_guard(["--root", str(tmp_path), "--range", "HEAD"], {}, capsys)
+    assert (code, "--range takes A..B" in output) == (2, True)
+
+
+# ---------------------------------------------------------------- review follow-ups
+
+
+def test_range_reads_allowlist_and_baseline_from_the_base_commit(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (repo / "a.md").write_text("fine\n", encoding="utf-8")
+    git(repo, "add", "a.md")
+    git(repo, "commit", "-q", "-m", "base")
+    base = head(repo)
+    env = {"LEAK_DENYLIST": DENYLIST_TEXT}
+
+    address = "alex" + AT + "gmail.com"
+    (repo / "b.md").write_text(f"{address}\n", encoding="utf-8")
+    git(repo, "add", "b.md")
+    git(repo, "commit", "-q", "-m", "leak")
+    leak = head(repo)
+    # The same change tries to approve its own leak, both ways.
+    (repo / ".leakguard-allow").write_text(f"{address} # reason: x\n", encoding="utf-8")
+    (repo / ".leakguard-baseline").write_text(
+        f"cutoff {leak}\n{leak} dash-character 1 b.md\n", encoding="utf-8"
+    )
+    git(repo, "add", ".leakguard-allow", ".leakguard-baseline")
+    git(repo, "commit", "-q", "-m", "approve")
+
+    code, output = run_guard(["--root", str(repo), "--range", f"{base}..HEAD"], env, capsys)
+    assert code == 1
+    assert f"commit {leak[:12]} b.md:1: email-address" in output
+    assert "baselined" not in output
+
+    # Once the allowlist is on the base, it applies to later ranges.
+    git(repo, "commit", "-q", "--allow-empty", "-m", "later")
+    code, output = run_guard(["--root", str(repo), "--range", "HEAD~1..HEAD"], env, capsys)
+    assert code == 0
+
+
+def test_history_baseline_cutoff_must_be_on_the_default_branch(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (repo / "a.md").write_text("x\n", encoding="utf-8")
+    git(repo, "add", "a.md")
+    git(repo, "commit", "-q", "-m", "main")
+    git(repo, "switch", "-q", "-c", "side")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "side")
+    side = head(repo)
+    git(repo, "switch", "-q", "-")
+    (repo / ".leakguard-baseline").write_text(f"cutoff {side}\n", encoding="utf-8")
+    code, output = run_guard(
+        ["--root", str(repo), "--history"], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert (code, "cutoff is not on the base or default branch" in output) == (2, True)
+
+
+def test_nul_bytes_in_file_content_cannot_desync_history(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (repo / ".gitattributes").write_text("*.dat diff\n", encoding="utf-8")
+    (repo / "x.dat").write_bytes(b"hello\0world\0" + ("a" + AT + "gmail.com").encode() + b"\n")
+    git(repo, "add", ".")
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Alex",
+            "-c",
+            "user.email=alex" + AT + "gmail.com",
+            "commit",
+            "-q",
+            "-m",
+            "binary-ish",
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    sha = head(repo)
+    code, output = run_guard(
+        ["--root", str(repo), "--history"], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 1
+    assert f"commit {sha[:12]} author email:1: email-address" in output
+    assert "commit world" not in output
+    assert "commit hello" not in output
+
+
+def test_commit_metadata_fails_closed_on_unexpected_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(leak_guard, "run_git", lambda *args: b"not a sha\0a\0b\0c\0d\0m\0")
+    with pytest.raises(GuardSetupError, match="could not be parsed safely"):
+        leak_guard.commit_metadata(tmp_path, ["--all"])
+
+
+def test_range_includes_merge_commits(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (repo / "a.md").write_text("x\n", encoding="utf-8")
+    git(repo, "add", "a.md")
+    git(repo, "commit", "-q", "-m", "base")
+    base = head(repo)
+    git(repo, "switch", "-q", "-c", "side")
+    (repo / "b.md").write_text("alex" + AT + "gmail.com\n", encoding="utf-8")
+    git(repo, "add", "b.md")
+    git(repo, "commit", "-q", "-m", "side work")
+    git(repo, "switch", "-q", "-")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "main work")
+    git(repo, "merge", "-q", "--no-ff", "-m", "merge side", "side")
+    code, output = run_guard(
+        ["--root", str(repo), "--range", f"{base}..HEAD"], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 1
+    assert " b.md:1: email-address" in output
+
+
+def test_image_metadata_text_is_scanned_and_never_baselinable(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    compressed = b"Author\0\0" + zlib.compress(f"by {SECRET_WORD}".encode())
+    (repo / "shot.png").write_bytes(png((b"zTXt", compressed)))
+    (repo / "plain.png").write_bytes(
+        png((b"tEXt", b"Comment\0mail alex" + AT.encode() + b"gmail.com"))
+    )
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "images")
+    sha = head(repo)
+    env = {"LEAK_DENYLIST": DENYLIST_TEXT}
+    code, output = run_guard(["--root", str(repo), "--emit-baseline", sha], env, capsys)
+    assert "image-metadata" not in output
+    code, output = run_guard(["--root", str(repo), "--tree"], env, capsys)
+    assert code == 1
+    assert re.search(
+        r"shot\.png \(embedded text\):\d+: denylist: private identifier \(hash #1\)", output
+    )
+    assert re.search(r"plain\.png \(embedded text\):\d+: email-address", output)
+    assert SECRET_WORD not in output
+    assert "Comment" in leak_guard.image_text(png((b"tEXt", b"Comment\0x")))
+    itxt = b"Title\0\x01\0en\0\0" + zlib.compress(b"hidden words")
+    assert "hidden words" in leak_guard.image_text(png((b"iTXt", itxt)))
+    assert "a long plain run" in leak_guard.image_text(b"GIF89a\x00a long plain run\x00")
+    exif = b"Exif\x00\x00Artist\x00riley"
+    jpeg = b"\xff\xd8\xff\xe1" + struct.pack(">H", len(exif) + 2) + exif + b"\xff\xda\x00\x02riley"
+    assert "riley" in leak_guard.image_text(jpeg)
+    assert leak_guard.image_text(jpeg).count("riley") == 1
+    short = "~" + "/ab"
+    assert short not in leak_guard.image_text(b"\xff\xd8\x00" + short.encode() + b"\x00")
+    in_stream = "~" + "/zz"
+    pdf = b"%PDF-1.7\n<< /Author (alex) >>\nstream\nx " + in_stream.encode() + b" y\nendstream\n"
+    text = leak_guard.image_text(pdf + b"<x:xmpmeta>m</x:xmpmeta>")
+    assert "/Author (alex)" in text
+    assert in_stream not in text
+    assert "<x:xmpmeta>m</x:xmpmeta>" in text
+
+
+@pytest.mark.parametrize(
+    ("text", "origin"),
+    [
+        (
+            "C"
+            + ":"
+            + BACKSLASH
+            + "Windows"
+            + BACKSLASH
+            + ".."
+            + BACKSLASH
+            + "Users"
+            + BACKSLASH
+            + "alex",
+            None,
+        ),
+        ("C" + ":" + BACKSLASH + "path" + BACKSLASH + "Users" + BACKSLASH + "alex", None),
+        (
+            "D" + ":" + BACKSLASH + "work" + BACKSLASH + "clientco" + BACKSLASH + "a.txt",
+            "tests/test_a.py",
+        ),
+        ("C" + ":/" + "x/../y", "docs/a.md"),
+    ],
+)
+def test_windows_exemptions_do_not_cover_real_paths(text: str, origin: str | None) -> None:
+    assert rules_hit(text, origin=origin) == ["windows-path"]
+
+
+def test_split_literal_private_key_and_letter_only_aws_key() -> None:
+    key = "-" * 5 + "BEGIN RSA " + "PRIVATE KEY" + "-" * 5
+    split = f'key = ("{key}\\n"\n    "{noise(64)}")'
+    assert "private-key" in rules_hit(split)
+    letters = "".join(char for char in noise(80).upper() if char.isalpha())[:16]
+    assert "aws-access-key" in rules_hit("AKIA" + letters)
+
+
+def test_strip_png_keeps_color_profile_and_animation() -> None:
+    animated = png((b"iCCP", b"sRGB\0\0x"), (b"acTL", b"\0" * 8), (b"tEXt", b"a\0b"))
+    stripped, removed = leak_guard.strip_png(animated)
+    assert removed == 1
+    kinds = [kind for kind, _ in leak_guard.png_chunks(stripped)]
+    assert kinds == [b"IHDR", b"iCCP", b"acTL", b"IDAT", b"IEND"]
+
+
+# ---------------------------------------------------------------- re-audit follow-ups
+
+
+def test_added_lines_keep_text_after_carriage_returns_and_form_feeds(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (repo / "a.md").write_text("fine\n", encoding="utf-8")
+    git(repo, "add", "a.md")
+    git(repo, "commit", "-q", "-m", "base")
+    base = head(repo)
+    home = "/" + "home/dana/out.bin"
+    (repo / "log.txt").write_bytes(f"step 1\rsaved {home}\nintro\x0c{SECRET_WORD}\n".encode())
+    git(repo, "add", "log.txt")
+    git(repo, "commit", "-q", "-m", "log")
+    code, output = run_guard(
+        ["--root", str(repo), "--range", f"{base}..HEAD"], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 1
+    assert " log.txt:1: linux-home-path" in output
+    assert " log.txt:2: denylist: private identifier (hash #1)" in output
+    files, _ = parse_patch("diff --git a/x b/x\n+++ b/x\n@@ -0,0 +1,2 @@\n+a\rb\n+c\x0cd\n")
+    assert files[0].lines == ["a\rb", "c\x0cd"]
+
+
+def test_file_names_without_a_diff_are_scanned(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (repo / "a.md").write_text("same content\n", encoding="utf-8")
+    git(repo, "add", "a.md")
+    git(repo, "commit", "-q", "-m", "base")
+    base = head(repo)
+    (repo / f"{SECRET_WORD}-notes.txt").write_bytes(b"")
+    (repo / ("dana.real" + AT + "gmail.com")).write_bytes(b"")
+    (repo / "copy-of-a.md").write_text("same content\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "empty files and a reused blob")
+    code, output = run_guard(
+        ["--root", str(repo), "--range", f"{base}..HEAD"], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 1
+    assert "(file name):1: denylist: private identifier (hash #1)" in output
+    assert "(file name):1: email-address" in output
+    assert SECRET_WORD not in output
+
+
+def test_branch_names_are_scanned(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (repo / "a.md").write_text("x\n", encoding="utf-8")
+    git(repo, "add", "a.md")
+    git(repo, "commit", "-q", "-m", "base")
+    git(repo, "branch", f"fix-for-{SECRET_WORD}")
+    code, output = run_guard(
+        ["--root", str(repo), "--history"], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 1
+    assert "ref <path withheld " in output
+    assert " name:1: denylist: private identifier (hash #1)" in output
+    assert SECRET_WORD not in output
+
+
+def test_pr_branch_name_is_scanned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fake_get(url: str, token: str) -> Any:
+        if url.endswith("/pulls/5"):
+            return {"title": "t", "body": "", "head": {"ref": f"wip-{SECRET_WORD}"}}
+        return []
+
+    monkeypatch.setattr(leak_guard, "http_get_json", fake_get)
+    env = {
+        "GITHUB_TOKEN": "t",
+        "GITHUB_REPOSITORY": "o/r",
+        "LEAK_DENYLIST": DENYLIST_TEXT,
+        "GITHUB_EVENT_PATH": event_file(tmp_path, {"pull_request": {"number": 5}}),
+    }
+    code, output = run_guard(["--root", str(tmp_path), "--pr"], env, capsys)
+    assert (code, "pr branch:1: denylist" in output) == (1, True)
+
+
+def test_binaries_and_office_files_are_scanned_for_text(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    early_nul = tmp_path / "notes.txt"
+    early_nul.write_bytes(b"\x00header\ncontact " + ("alex" + AT + "gmail.com").encode())
+    docx = tmp_path / "report.docx"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("docProps/core.xml", f"<dc:creator>{SECRET_WORD}</dc:creator>")
+        archive.writestr("word/media/a.bin", b"\x00\x01")
+    docx.write_bytes(buffer.getvalue())
+    tif = tmp_path / "scan.tif"
+    tif.write_bytes(b"II*\x00\x08\x00\x00\x00Exif Artist " + SECRET_WORD.encode() + b"\x00")
+    args = ["--root", str(tmp_path)]
+    for path in (early_nul, docx, tif):
+        args += ["--text", str(path)]
+    code, output = run_guard(args, {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys)
+    assert code == 1
+    assert re.search(r"notes\.txt \(embedded text\):\d+: email-address", output)
+    assert re.search(r"report\.docx \(embedded text\):\d+: denylist", output)
+    assert re.search(r"scan\.tif \(embedded text\):\d+: denylist", output)
+    assert "scan.tif: image-metadata" in output
+    assert SECRET_WORD not in output
+    assert "alex" in leak_guard.binary_text("alex long text".encode("utf-16-le"))
+    assert leak_guard.binary_text(b"PK\x03\x04 broken archive here") != ""
+
+
+def test_pdf_utf16_strings_are_decoded() -> None:
+    hex_author = "FEFF" + SECRET_WORD.encode("utf-16-be").hex().upper()
+    literal = b"(\xfe\xff" + "riley".encode("utf-16-be") + b")"
+    pdf = f"%PDF-1.7\n<< /Author <{hex_author}> >>\n".encode() + b"<< /Title " + literal + b" >>"
+    text = leak_guard.image_text(pdf)
+    assert SECRET_WORD in text
+    assert "riley" in text
+    assert leak_guard.pdf_utf16_strings(b"<FEFFzz>") == []
+
+
+def test_non_png_image_metadata_is_never_baselinable(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exif = b"Exif\x00\x00Model x"
+    jpeg = b"\xff\xd8\xff\xe1" + struct.pack(">H", len(exif) + 2) + exif + b"\xff\xda"
+    (repo / "photo.jpg").write_bytes(jpeg)
+    git(repo, "add", "photo.jpg")
+    git(repo, "commit", "-q", "-m", "photo")
+    code, output = run_guard(
+        ["--root", str(repo), "--emit-baseline", "HEAD"], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 0
+    assert "image-metadata" not in output
+
+
+def test_private_key_with_double_escaped_newlines() -> None:
+    key = "-" * 5 + "BEGIN RSA " + "PRIVATE KEY" + "-" * 5
+    text = key + BACKSLASH * 2 + "n" + noise(64) + BACKSLASH * 2 + "n"
+    assert "private-key" in rules_hit(text)
+
+
+# ---------------------------------------------------------------- final review follow-ups
+
+
+def test_text_after_the_image_end_is_scanned() -> None:
+    address = ("alex" + AT + "gmail.com").encode()
+    jpeg = b"\xff\xd8\xff\xff\xfe" + struct.pack(">H", 2 + 20) + b"comment " + address
+    jpeg += b"\xff\xda\x00\x02pixels\xff\xd9 appended " + address + b" tail"
+    text = leak_guard.image_text(jpeg)
+    assert text.count("alex" + AT + "gmail.com") >= 2
+    assert leak_guard.jpeg_metadata_segments(b"\xff\xd8\xff\xe1\x00\x01") == []
+    trailing_png = png() + b" appended " + address + b" tail"
+    assert "alex" + AT + "gmail.com" in leak_guard.image_text(trailing_png)
+
+
+def test_corrupt_and_oversized_archives_never_crash() -> None:
+    good = io.BytesIO()
+    with zipfile.ZipFile(good, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", "<w:t>" + "x" * 4000 + "</w:t>")
+        archive.writestr("docProps/core.xml", f"<dc:creator>{SECRET_WORD}</dc:creator>")
+    data = bytearray(good.getvalue())
+    start = data.find(b"word/document.xml") + len("word/document.xml")
+    data[start + 5 : start + 25] = b"\xff" * 20  # corrupt the first entry's deflate stream
+    texts = leak_guard.archive_xml_text(bytes(data))
+    assert any(SECRET_WORD in text for text in texts)
+    assert leak_guard.archive_xml_text(b"PK\x03\x04 not really") == []
+
+
+def test_archive_budget_limits_total_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(leak_guard, "ARCHIVE_TEXT_LIMIT", 1000)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for index in range(5):
+            archive.writestr(f"part{index}.xml", "y" * 400)
+    texts = leak_guard.archive_xml_text(buffer.getvalue())
+    assert sum(len(text) for text in texts) <= 1000
+
+
+def test_text_starting_like_an_image_header_is_text(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    notes = tmp_path / "results.md"
+    notes.write_text("BM25 results\nwe strip EXIF data\n", encoding="utf-8")
+    code, output = run_guard(
+        ["--root", str(tmp_path), "--text", str(notes)], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 0
+    assert "image" not in output
+
+
+def test_pdf_lowercase_hex_and_octal_literals_are_decoded() -> None:
+    lower = "feff" + SECRET_WORD.encode("utf-16-be").hex()
+    octal = "".join(f"\\{byte:03o}" for byte in b"\xfe\xff" + "riley".encode("utf-16-be"))
+    pdf = f"%PDF-1.7\n<< /Author <{lower}> /Title ({octal}) >>\n".encode()
+    text = leak_guard.image_text(pdf)
+    assert SECRET_WORD in text
+    assert "riley" in text
+    assert leak_guard.pdf_unescape(b"a\\(b\\)\\n\\\\") == b"a(b)\n\\"
