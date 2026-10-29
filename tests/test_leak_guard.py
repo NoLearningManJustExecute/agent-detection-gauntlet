@@ -1119,6 +1119,14 @@ def test_image_metadata_text_is_scanned_and_never_baselinable(
     itxt = b"Title\0\x01\0en\0\0" + zlib.compress(b"hidden words")
     assert "hidden words" in leak_guard.image_text(png((b"iTXt", itxt)))
     assert "plain run" in leak_guard.image_text(b"\xff\xd8 plain run \x00")
+    short = "~" + "/ab"
+    assert short not in leak_guard.image_text(b"\xff\xd8\x00" + short.encode() + b"\x00")
+    in_stream = "~" + "/zz"
+    pdf = b"%PDF-1.7\n<< /Author (alex) >>\nstream\nx " + in_stream.encode() + b" y\nendstream\n"
+    text = leak_guard.image_text(pdf + b"<x:xmpmeta>m</x:xmpmeta>")
+    assert "/Author (alex)" in text
+    assert in_stream not in text
+    assert "<x:xmpmeta>m</x:xmpmeta>" in text
 
 
 @pytest.mark.parametrize(

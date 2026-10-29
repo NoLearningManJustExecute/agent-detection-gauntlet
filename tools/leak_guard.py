@@ -615,8 +615,8 @@ def png_chunks(data: bytes) -> Iterator[tuple[bytes, bytes]]:
 
 
 def image_text(data: bytes) -> str:
-    """Readable text an image carries: PNG text chunks (decompressed), and printable runs
-    outside PNG pixel data. Pixel data is skipped, so it cannot produce chance matches."""
+    """Readable text an image carries: PNG text chunks (decompressed) and other non-pixel chunks,
+    PDF dictionaries and XMP packets, and long printable runs in other formats."""
     pieces: list[bytes] = []
     if data.startswith(PNG_SIGNATURE):
         for kind, chunk in png_chunks(data):
@@ -634,9 +634,15 @@ def image_text(data: bytes) -> str:
                 pieces += [keyword, language, translated, _inflate(text) if compressed else text]
             else:
                 pieces.append(body)
+    elif data.startswith(b"%PDF"):
+        # Stream bodies are mostly compressed; keep the dictionaries and any XMP packets.
+        pieces.append(re.sub(rb"stream\r?\n.*?endstream", b"", data, flags=re.DOTALL))
+        pieces += re.findall(rb"<x:xmpmeta.*?</x:xmpmeta>", data, flags=re.DOTALL)
     else:
         pieces.append(data)
-    runs = re.findall(rb"[\x20-\x7e]{4,}", b"\n".join(pieces))
+    # Longer runs outside PNG text, so compressed bytes do not produce chance matches.
+    shortest = 4 if data.startswith(PNG_SIGNATURE) else 8
+    runs = re.findall(rb"[\x20-\x7e]{%d,}" % shortest, b"\n".join(pieces))
     return "\n".join(run.decode("ascii") for run in runs)
 
 
