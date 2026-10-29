@@ -130,6 +130,9 @@ def make_export(root: Path, runs: list[tuple[dict[str, Any], str, int]]) -> Path
     return root
 
 
+NOTES = Path(__file__).parent / "fixtures_corpus_notes.json"
+
+
 @pytest.fixture
 def export(tmp_path: Path) -> Path:
     runs: list[tuple[dict[str, Any], str, int]] = []
@@ -188,13 +191,14 @@ def _ev(data: dict[str, Any]) -> Any:
 
 def test_build_dedupes_and_splits_whole_groups(export: Path, tmp_path: Path) -> None:
     out = tmp_path / "corpus"
-    summary = cb.build([export], out, "salt-1")
+    summary = cb.build([export], out, "salt-1", NOTES)
     assert summary.raw == 2 * 6 * 3 * 2 + 3 + 2 + 10
     assert summary.unique == 2 * 6 * 2 + 3 + 2 + 10  # three identical runs collapse to one
     assert summary.groups == 2 * 6 + 3 + 2 + 10
     manifest = cb.read_manifest(out)
     assert manifest["ineffective_classes"] == ["AC03"]
-    assert manifest["low_success_classes"] == ["AC06"]
+    assert manifest["below_floor_classes"] == ["AC06"]
+    assert manifest["notes"]["classes"]["AC06"]["status"] == "low-success"
     labels = [json.loads(x) for x in (out / "labels.jsonl").read_text("utf-8").splitlines()]
     by_group: dict[str, set[str]] = {}
     for x in labels:
@@ -220,8 +224,8 @@ def test_build_dedupes_and_splits_whole_groups(export: Path, tmp_path: Path) -> 
 
 
 def test_build_is_byte_reproducible(export: Path, tmp_path: Path) -> None:
-    cb.build([export], tmp_path / "a", "salt-1")
-    cb.build([export], tmp_path / "b", "salt-1")
+    cb.build([export], tmp_path / "a", "salt-1", NOTES)
+    cb.build([export], tmp_path / "b", "salt-1", NOTES)
     files = sorted(
         p.relative_to(tmp_path / "a") for p in (tmp_path / "a").rglob("*") if p.is_file()
     )
@@ -231,8 +235,8 @@ def test_build_is_byte_reproducible(export: Path, tmp_path: Path) -> None:
 
 
 def test_salt_changes_the_split(export: Path, tmp_path: Path) -> None:
-    cb.build([export], tmp_path / "a", "salt-1")
-    cb.build([export], tmp_path / "b", "salt-2")
+    cb.build([export], tmp_path / "a", "salt-1", NOTES)
+    cb.build([export], tmp_path / "b", "salt-2", NOTES)
     assert (
         cb.read_manifest(tmp_path / "a")["heldout_groups"]
         != cb.read_manifest(tmp_path / "b")["heldout_groups"]
@@ -257,13 +261,13 @@ def test_heldout_count(n: int, succeeding: bool, expected: int) -> None:
 
 def test_verify_catches_tampering(export: Path, tmp_path: Path) -> None:
     out = tmp_path / "corpus"
-    cb.build([export], out, "salt-1")
+    cb.build([export], out, "salt-1", NOTES)
     frozen = (out / cb.MANIFEST).read_bytes()
     assert verify(out, frozen) == []
     heldout = next((out / "heldout").rglob("traces.jsonl"))
     heldout.write_bytes(heldout.read_bytes() + b"\n")
     assert any("sha256 differs" in p for p in verify(out, frozen))
-    cb.build([export], out, "salt-2")
+    cb.build([export], out, "salt-2", NOTES)
     assert any("changed after the freeze" in p for p in verify(out, frozen))
     (out / "heldout" / "extra.jsonl").write_text("{}", encoding="utf-8")
     assert any("not in SPLIT_MANIFEST" in p for p in verify(out))
@@ -281,7 +285,7 @@ def test_build_refuses_foreign_out_and_missing_group(export: Path, tmp_path: Pat
             del row["variant_group"]
     write_lines(export / "labels.jsonl", rows)
     with pytest.raises(cb.CorpusError, match="no variant_group"):
-        cb.build([export], tmp_path / "x", "s")
+        cb.build([export], tmp_path / "x", "s", NOTES)
 
 
 def test_build_refuses_a_non_export(tmp_path: Path) -> None:
@@ -293,7 +297,20 @@ def test_card_and_cli(export: Path, tmp_path: Path, capsys: pytest.CaptureFixtur
     set_repo_root(tmp_path)
     out, card = tmp_path / "corpus", tmp_path / "dataset.md"
     assert (
-        main(["corpus", "build", "--source", str(export), "--out", str(out), "--salt", "salt-1"])
+        main(
+            [
+                "corpus",
+                "build",
+                "--source",
+                str(export),
+                "--out",
+                str(out),
+                "--salt",
+                "salt-1",
+                "--notes",
+                str(NOTES),
+            ]
+        )
         == 0
     )
     assert main(["corpus", "verify", str(out)]) == 0
@@ -305,7 +322,8 @@ def test_card_and_cli(export: Path, tmp_path: Path, capsys: pytest.CaptureFixtur
     assert "| AC01 | 6 | 6 | 4 | 2 | 5 | pass |" in text
     assert "| AC03 | 2 | 0 | " in text and "Ineffective at baseline: AC03" in text
     assert "| AC06 | 3 | 1 |" in text and "| low-success |" in text
-    assert "Low-success at baseline: AC06" in text and "pooled metrics only" in text
+    assert "Low-success: AC06" in text and "resists the model" in text
+    assert "pooled metrics only" in text and "- a listed gap" in text
     assert chr(0x2014) not in text and chr(0x2013) not in text
     frozen = tmp_path / "frozen.json"
     frozen.write_text("{}", encoding="utf-8")
@@ -317,3 +335,15 @@ def test_trace_readers() -> None:
     trace = make_trace([_ev(e) for e in _events("t-x", "text", seed=1)], "t-x")
     assert flow_to_sink(trace) == (True, True)
     assert hard_negative_kinds(trace) == {"reads_secret", "sends_message"}
+
+
+def test_notes_must_match_the_below_floor_classes(export: Path, tmp_path: Path) -> None:
+    with pytest.raises(cb.CorpusError, match="must match"):
+        cb.build([export], tmp_path / "a", "s")
+    wrong = tmp_path / "notes.json"
+    wrong.write_text(
+        json.dumps({"classes": {"AC06": {"status": "meh", "finding": "x"}}, "known_gaps": []}),
+        encoding="utf-8",
+    )
+    with pytest.raises(cb.CorpusError, match="status must be one of"):
+        cb.build([export], tmp_path / "b", "s", wrong)

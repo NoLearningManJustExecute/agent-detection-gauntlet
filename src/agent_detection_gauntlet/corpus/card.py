@@ -124,7 +124,9 @@ def render(corpus: Path) -> str:
     traces = {k: _load_split_traces(corpus, k) for k in ks}
     groups: dict[str, dict[str, Any]] = manifest["groups"]
     ineffective: list[str] = manifest["ineffective_classes"]
-    low_success: list[str] = manifest.get("low_success_classes", [])
+    low_success: list[str] = manifest.get("below_floor_classes", [])
+    noted: dict[str, dict[str, str]] = manifest.get("notes", {}).get("classes", {})
+    extra_gaps: list[str] = manifest.get("notes", {}).get("known_gaps", [])
 
     raw_by_kept = Counter(r["kept_as"] for r in raw)
     seeded_groups = {group_of(x): x.derived_from for x in labels.values() if x.derived_from}
@@ -214,7 +216,7 @@ def render(corpus: Path) -> str:
         if c in ineffective:
             status = "ineffective"
         elif c in low_success:
-            status = "low-success"
+            status = noted[c]["status"]
         elif len(ok) >= MIN_GROUPS and held >= MIN_HELDOUT_SUCCESSFUL:
             status = "pass"
         else:
@@ -246,12 +248,12 @@ def render(corpus: Path) -> str:
         members = [i for i in groups.values() if i["class"] == c]
         winners = [i for i in members if i["succeeded"]]
         held_ok = sum(1 for i in winners if i["split"] == "heldout")
-        w(f"Low-success at baseline: {c}. {len(winners)} of {len(members)} groups succeed,")
-        w(f"below the floor of {MIN_GROUPS}, after seeding stopped by decision. A marginally")
-        w("effective attack against this model, documented alongside the ineffective classes.")
-        w(f"Its traces are included and labeled, but with {held_ok} successful heldout")
-        w("group(s) it is underpowered for per-class analysis and contributes to pooled")
-        w("metrics only.")
+        status = noted[c]["status"]
+        w(f"{status.capitalize()}: {c}. {len(winners)} of {len(members)} groups succeed at")
+        w(f"baseline, below the floor of {MIN_GROUPS}. {noted[c]['finding']}")
+        w(f"Its traces are included and labeled; with {held_ok} successful heldout group(s) it")
+        w("contributes to pooled metrics only, and any per-class figure for it is flagged as")
+        w("underpowered.")
         w("")
 
     w("## Attack success rate per class")
@@ -380,8 +382,9 @@ def render(corpus: Path) -> str:
     w("- Ineffective classes and `attack_failed` traces are excluded from recall denominators")
     w("  and reported with their counts.")
     if low_success:
-        w(f"- Low-success classes ({', '.join(low_success)}) count toward pooled metrics only; no")
-        w("  per-class estimate is reported for them.")
+        named = ", ".join(f"{c} ({noted[c]['status']})" for c in low_success)
+        w(f"- Below-floor classes, {named}, count toward pooled metrics only;")
+        w("  a per-class figure for them is reported only flagged as underpowered.")
     w("")
 
     w("## Known gaps")
@@ -396,7 +399,9 @@ def render(corpus: Path) -> str:
     w("  content by construction.")
     w("- rag-attack-lab traces are not included yet.")
     for c in low_success:
-        w(f"- {c} is low-success: below the group floor, per-class results underpowered.")
+        w(f"- {c} is {noted[c]['status']}: below the group floor; per-class results underpowered.")
+    for gap in extra_gaps:
+        w(f"- {gap}")
     for c, n, held in gate_rows:
         if n < MIN_GROUPS or held < MIN_HELDOUT_SUCCESSFUL:
             w(f"- {c}: {n} successful groups, {held} heldout; below the gate.")

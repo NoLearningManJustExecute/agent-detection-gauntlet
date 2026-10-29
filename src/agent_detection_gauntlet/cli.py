@@ -127,7 +127,7 @@ DEFAULT_CARD = Path("docs/dataset.md")
 
 
 def cmd_corpus_build(args: argparse.Namespace) -> int:
-    summary = build_corpus(args.source, args.out, args.salt)
+    summary = build_corpus(args.source, args.out, args.salt, args.notes)
     print(
         f"ok: {summary.raw} raw runs, {summary.unique} unique traces, {summary.groups} groups, "
         f"{summary.heldout_groups} heldout"
@@ -215,6 +215,9 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--source", type=Path, action="append", required=True, help="export dir")
     c.add_argument("--out", type=Path, default=DEFAULT_CORPUS)
     c.add_argument("--salt", required=True, help="split salt, recorded in the manifest")
+    c.add_argument(
+        "--notes", type=Path, default=None, help="class notes and known gaps (JSON), recorded"
+    )
     c.set_defaults(handler=cmd_corpus_build)
     c = csub.add_parser("verify", help="check the corpus against SPLIT_MANIFEST.json")
     c.add_argument("corpus", type=Path, nargs="?", default=DEFAULT_CORPUS)

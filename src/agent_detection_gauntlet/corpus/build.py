@@ -13,7 +13,8 @@ Inputs are export directories as the source repositories write them: `labels.jso
   heldout. A succeeding class with at least four successful groups holds out at least
   two of them, so heldout can measure recall on every class that succeeds.
 - **Manifest.** `SPLIT_MANIFEST.json` records the salt, every group's split, the
-  ineffective and low-success classes, the sources, and the sha256 of every heldout
+  ineffective and below-floor classes (with their notes), the sources, and the sha256
+  of every heldout
   file and of the
   labels file. `verify.py` checks it; CI refuses any change after the freeze commit.
 """
@@ -175,7 +176,37 @@ class BuildSummary:
     heldout_groups: int
 
 
-def build(sources: Sequence[Path], out: Path, salt: str) -> BuildSummary:
+# Why a class that succeeds at baseline still has fewer successful groups than the floor.
+# Different findings, so the corpus names them differently.
+BELOW_FLOOR_STATUSES: dict[str, str] = {
+    "low-success": "the attack resists this model: few inputs succeed",
+    "underpowered": "the seeding method could not preserve the attack's structure",
+}
+
+
+def read_notes(path: Path | None) -> dict[str, Any]:
+    """Corpus notes: a status and finding per below-floor class, and extra known gaps."""
+    if path is None:
+        return {"classes": {}, "known_gaps": []}
+    data = strict_json_loads(path.read_text(encoding="utf-8"))
+    classes = data.get("classes", {}) if isinstance(data, dict) else None
+    gaps = data.get("known_gaps", []) if isinstance(data, dict) else None
+    if not isinstance(classes, dict) or not isinstance(gaps, list):
+        raise CorpusError(f"{shown_path(path)}: needs a 'classes' object and a 'known_gaps' list")
+    for cls, note in classes.items():
+        if not isinstance(note, dict) or note.get("status") not in BELOW_FLOOR_STATUSES:
+            raise CorpusError(f"{cls}: status must be one of {sorted(BELOW_FLOOR_STATUSES)}")
+        if not isinstance(note.get("finding"), str) or not note["finding"].strip():
+            raise CorpusError(f"{cls}: a note needs its finding")
+    if not all(isinstance(g, str) and g.strip() for g in gaps):
+        raise CorpusError("known_gaps entries must be non-empty strings")
+    return {"classes": classes, "known_gaps": gaps}
+
+
+def build(
+    sources: Sequence[Path], out: Path, salt: str, notes_path: Path | None = None
+) -> BuildSummary:
+    notes = read_notes(notes_path)
     loaded = [load_source(path) for path in sources]
     ks = sorted(loaded[0].lines)
     if any(sorted(s.lines) != ks for s in loaded):
@@ -228,6 +259,16 @@ def build(sources: Sequence[Path], out: Path, salt: str) -> BuildSummary:
                 files[rel] = _sha256(out / rel)
 
     succeeding = {g.cls for g in groups.values() if g.succeeded}
+    below_floor = sorted(
+        c
+        for c in succeeding
+        if sum(1 for g in groups.values() if g.cls == c and g.succeeded) < MIN_GROUPS_FOR_FLOOR
+    )
+    noted = set(notes["classes"])
+    if noted != set(below_floor):
+        raise CorpusError(
+            f"below-floor classes {below_floor} and noted classes {sorted(noted)} must match"
+        )
     attack_classes = {g.cls for g in groups.values() if g.cls != BENIGN_CLASS}
     manifest = {
         "manifest_version": 1,
@@ -242,12 +283,10 @@ def build(sources: Sequence[Path], out: Path, salt: str) -> BuildSummary:
         "content_ref_k": ks,
         "ineffective_classes": sorted(attack_classes - succeeding),
         # Succeeds at baseline, but with fewer distinct successful groups than the floor:
-        # included and labeled, too few heldout groups for a per-class estimate.
-        "low_success_classes": sorted(
-            c
-            for c in succeeding
-            if sum(1 for g in groups.values() if g.cls == c and g.succeeded) < MIN_GROUPS_FOR_FLOOR
-        ),
+        # included and labeled, too few heldout groups for a per-class estimate. Each needs a
+        # note saying why (BELOW_FLOOR_STATUSES).
+        "below_floor_classes": below_floor,
+        "notes": notes,
         "groups": {
             group: {"class": info.cls, "split": info.split.value, "succeeded": info.succeeded}
             for group, info in sorted(groups.items())
