@@ -124,6 +124,7 @@ def render(corpus: Path) -> str:
     traces = {k: _load_split_traces(corpus, k) for k in ks}
     groups: dict[str, dict[str, Any]] = manifest["groups"]
     ineffective: list[str] = manifest["ineffective_classes"]
+    low_success: list[str] = manifest.get("low_success_classes", [])
 
     raw_by_kept = Counter(r["kept_as"] for r in raw)
     seeded_groups = {group_of(x): x.derived_from for x in labels.values() if x.derived_from}
@@ -210,12 +211,15 @@ def render(corpus: Path) -> str:
         dev = sum(1 for g in ok if mine[g]["split"] == "dev")
         held = sum(1 for g in ok if mine[g]["split"] == "heldout")
         seeded = sum(1 for g in ok if g in seeded_groups)
-        status = (
-            "ineffective"
-            if c in ineffective
-            else ("pass" if len(ok) >= MIN_GROUPS and held >= MIN_HELDOUT_SUCCESSFUL else "SHORT")
-        )
-        if c not in ineffective:
+        if c in ineffective:
+            status = "ineffective"
+        elif c in low_success:
+            status = "low-success"
+        elif len(ok) >= MIN_GROUPS and held >= MIN_HELDOUT_SUCCESSFUL:
+            status = "pass"
+        else:
+            status = "SHORT"
+        if c not in ineffective and c not in low_success:
             gate_rows.append((c, len(ok), held))
         rows.append([c, len(mine), len(ok), dev, held, seeded, status])
     w(
@@ -237,6 +241,17 @@ def render(corpus: Path) -> str:
         w(f"Ineffective at baseline: {', '.join(ineffective)}. Their traces are included and")
         w("labeled; no group succeeded at baseline, so they are excluded from detection-recall")
         w("denominators and reported as a finding about the model, not a corpus defect.")
+        w("")
+    for c in low_success:
+        members = [i for i in groups.values() if i["class"] == c]
+        winners = [i for i in members if i["succeeded"]]
+        held_ok = sum(1 for i in winners if i["split"] == "heldout")
+        w(f"Low-success at baseline: {c}. {len(winners)} of {len(members)} groups succeed,")
+        w(f"below the floor of {MIN_GROUPS}, after seeding stopped by decision. A marginally")
+        w("effective attack against this model, documented alongside the ineffective classes.")
+        w(f"Its traces are included and labeled, but with {held_ok} successful heldout")
+        w("group(s) it is underpowered for per-class analysis and contributes to pooled")
+        w("metrics only.")
         w("")
 
     w("## Attack success rate per class")
@@ -364,6 +379,9 @@ def render(corpus: Path) -> str:
     w("  With a handful of groups per class these are wide and are read as such.")
     w("- Ineffective classes and `attack_failed` traces are excluded from recall denominators")
     w("  and reported with their counts.")
+    if low_success:
+        w(f"- Low-success classes ({', '.join(low_success)}) count toward pooled metrics only; no")
+        w("  per-class estimate is reported for them.")
     w("")
 
     w("## Known gaps")
@@ -377,6 +395,8 @@ def render(corpus: Path) -> str:
     w("- The document index is a trusted source, so AC10's injection enters through trusted")
     w("  content by construction.")
     w("- rag-attack-lab traces are not included yet.")
+    for c in low_success:
+        w(f"- {c} is low-success: below the group floor, per-class results underpowered.")
     for c, n, held in gate_rows:
         if n < MIN_GROUPS or held < MIN_HELDOUT_SUCCESSFUL:
             w(f"- {c}: {n} successful groups, {held} heldout; below the gate.")

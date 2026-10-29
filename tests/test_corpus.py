@@ -160,6 +160,8 @@ def export(tmp_path: Path) -> Path:
                         1 + r,
                     )
                 )
+    for g, ok in (("AC06", True), ("AC06-S01", False), ("AC06-S02", False)):
+        runs.append((_label(f"t-{g}-b0", g, "AC06", ok, run=f"b:{g}"), f"low {g} attempt", 1))
     for g in ("AC03", "AC03-S01"):
         runs.append((_label(f"t-{g}-b0", g, "AC03", False, run=f"b:{g}"), f"fail {g} attempt", 1))
     for i in range(10):
@@ -187,11 +189,12 @@ def _ev(data: dict[str, Any]) -> Any:
 def test_build_dedupes_and_splits_whole_groups(export: Path, tmp_path: Path) -> None:
     out = tmp_path / "corpus"
     summary = cb.build([export], out, "salt-1")
-    assert summary.raw == 2 * 6 * 3 * 2 + 2 + 10
-    assert summary.unique == 2 * 6 * 2 + 2 + 10  # three identical runs collapse to one
-    assert summary.groups == 2 * 6 + 2 + 10
+    assert summary.raw == 2 * 6 * 3 * 2 + 3 + 2 + 10
+    assert summary.unique == 2 * 6 * 2 + 3 + 2 + 10  # three identical runs collapse to one
+    assert summary.groups == 2 * 6 + 3 + 2 + 10
     manifest = cb.read_manifest(out)
     assert manifest["ineffective_classes"] == ["AC03"]
+    assert manifest["low_success_classes"] == ["AC06"]
     labels = [json.loads(x) for x in (out / "labels.jsonl").read_text("utf-8").splitlines()]
     by_group: dict[str, set[str]] = {}
     for x in labels:
@@ -301,6 +304,8 @@ def test_card_and_cli(export: Path, tmp_path: Path, capsys: pytest.CaptureFixtur
     assert text == render(out)
     assert "| AC01 | 6 | 6 | 4 | 2 | 5 | pass |" in text
     assert "| AC03 | 2 | 0 | " in text and "Ineffective at baseline: AC03" in text
+    assert "| AC06 | 3 | 1 |" in text and "| low-success |" in text
+    assert "Low-success at baseline: AC06" in text and "pooled metrics only" in text
     assert chr(0x2014) not in text and chr(0x2013) not in text
     frozen = tmp_path / "frozen.json"
     frozen.write_text("{}", encoding="utf-8")

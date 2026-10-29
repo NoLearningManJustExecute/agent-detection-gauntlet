@@ -13,7 +13,8 @@ Inputs are export directories as the source repositories write them: `labels.jso
   heldout. A succeeding class with at least four successful groups holds out at least
   two of them, so heldout can measure recall on every class that succeeds.
 - **Manifest.** `SPLIT_MANIFEST.json` records the salt, every group's split, the
-  ineffective classes, the sources, and the sha256 of every heldout file and of the
+  ineffective and low-success classes, the sources, and the sha256 of every heldout
+  file and of the
   labels file. `verify.py` checks it; CI refuses any change after the freeze commit.
 """
 
@@ -240,6 +241,13 @@ def build(sources: Sequence[Path], out: Path, salt: str) -> BuildSummary:
         },
         "content_ref_k": ks,
         "ineffective_classes": sorted(attack_classes - succeeding),
+        # Succeeds at baseline, but with fewer distinct successful groups than the floor:
+        # included and labeled, too few heldout groups for a per-class estimate.
+        "low_success_classes": sorted(
+            c
+            for c in succeeding
+            if sum(1 for g in groups.values() if g.cls == c and g.succeeded) < MIN_GROUPS_FOR_FLOOR
+        ),
         "groups": {
             group: {"class": info.cls, "split": info.split.value, "succeeded": info.succeeded}
             for group, info in sorted(groups.items())
