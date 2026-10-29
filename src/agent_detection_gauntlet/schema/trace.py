@@ -253,6 +253,9 @@ def integrity_problems(events: Sequence[TraceEvent]) -> list[tuple[int, str]]:
     trace_ids = {event.trace_id for event in events}
     if len(trace_ids) > 1:
         problems.append((0, f"events from several traces were grouped: {sorted(trace_ids)}"))
+    versions = sorted({event.schema_version for event in events})
+    if len(versions) > 1:
+        problems.append((0, f"one trace mixes schema versions {versions}"))
     position: dict[str, int] = {}
     for index, event in enumerate(events):
         if event.span_id in position:

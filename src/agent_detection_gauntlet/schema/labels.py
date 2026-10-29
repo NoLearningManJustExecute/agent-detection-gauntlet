@@ -84,7 +84,8 @@ class LabelRecord(BaseModel):
     @model_validator(mode="after")
     def _check_consistency(self) -> LabelRecord:
         if self.schema_version == "0.1":
-            present = [name for name in FIELDS_SINCE_0_2 if getattr(self, name) is not None]
+            # Any 0.2 key, even set to null, was an unknown key under 0.1.
+            present = [name for name in FIELDS_SINCE_0_2 if name in self.model_fields_set]
             if present:
                 raise ValueError(f"fields {present} need schema_version 0.2")
             if self.split is None:

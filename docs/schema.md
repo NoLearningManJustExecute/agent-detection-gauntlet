@@ -15,8 +15,8 @@ The current version is **0.2**. Every reader accepts `"0.1"` and `"0.2"`, so fil
 | 0.1 | First release. |
 | 0.2 | Labels: optional `scenario_id`, `task_id`, `condition`, `source_run_id`; `split` may be `null` (not yet assigned). Traces: `adg.guardrail.name` and `adg.guardrail.stage` on `guardrail.action`. Detections and the metrics report change only their version string. |
 
-A 0.1 record that uses a 0.2 field or attribute is rejected, so the meaning of a 0.1 file never
-changes.
+A 0.1 record that uses a 0.2 field or attribute is rejected, even when the field is `null`, so
+the meaning of a 0.1 file never changes. All events of one trace must share one version.
 
 ## OpenTelemetry GenAI conventions: pinned version
 
@@ -239,4 +239,5 @@ file is missing, out of date, or not one of the expected files.
 The JSON Schemas describe the shape of a single record. Several rules are enforced only by the
 reader: the `adg.*` attribute checks, the string type of GenAI attributes, the label consistency
 rules, and all cross-event rules (unique span ids, parent existence, content reference order).
-Use `gauntlet validate-traces` for a full check.
+The version rules (0.1 records rejecting 0.2 keys) and the malicious and benign label rules are
+also reader-only. Use `gauntlet validate-traces` for a full check.

@@ -280,3 +280,44 @@ def test_label_0_2_rules(overrides: dict[str, Any], message: str) -> None:
 def test_label_0_1_needs_a_split() -> None:
     with pytest.raises(ValidationError, match="split must be dev or heldout"):
         LabelRecord.model_validate_json(json.dumps({**LABEL, "split": None}))
+
+
+@pytest.mark.parametrize("key", ["scenario_id", "task_id", "condition", "source_run_id"])
+def test_label_0_1_rejects_0_2_keys_even_when_null(key: str) -> None:
+    with pytest.raises(ValidationError, match=r"need schema_version 0\.2"):
+        LabelRecord.model_validate_json(json.dumps({**LABEL, key: None}))
+
+
+def test_label_0_2_benign_rejects_scenario_id() -> None:
+    benign = {**LABEL_0_2, "label": "benign", "attack_class": None, "attack_succeeded": None}
+    with pytest.raises(ValidationError, match="must not carry a scenario_id"):
+        LabelRecord.model_validate_json(json.dumps(benign))
+
+
+def test_0_1_event_rejects_guardrail_stage_alone() -> None:
+    data = event_dict("s1", "guardrail.action", {"adg.guardrail.stage": "tool_call"})
+    with pytest.raises(ValidationError, match=r"need schema_version 0\.2"):
+        validate(data)
+
+
+def test_trace_must_not_mix_versions() -> None:
+    newer = event_dict("s2", "session.end")
+    newer["schema_version"] = "0.2"
+    newer["timestamp"] = "2026-01-15T09:00:01Z"
+    events = [make_event("s1", "session.start"), validate(newer)]
+    assert any("mixes schema versions" in m for _, m in integrity_problems(events))
+
+
+def test_0_1_detection_still_reads() -> None:
+    data = {
+        "schema_version": "0.1",
+        "rule_id": "ADG-0001",
+        "rule_version": "0.1.0",
+        "trace_id": "t-1",
+        "tier": "sequence",
+        "severity": "high",
+        "matched_span_ids": ["s1"],
+        "first_timestamp": "2026-01-15T09:00:00Z",
+        "last_timestamp": "2026-01-15T09:00:00Z",
+    }
+    assert Detection.model_validate_json(json.dumps(data)).schema_version == "0.1"
