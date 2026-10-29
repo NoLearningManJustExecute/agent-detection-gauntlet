@@ -322,7 +322,7 @@ def test_card_and_cli(export: Path, tmp_path: Path, capsys: pytest.CaptureFixtur
     assert "| AC01 | 6 | 6 | 4 | 2 | 5 | pass |" in text
     assert "| AC03 | 2 | 0 | " in text and "Ineffective at baseline: AC03" in text
     assert "| AC06 | 3 | 1 |" in text and "| low-success |" in text
-    assert "Low-success: AC06" in text and "resists the model" in text
+    assert "Low-success: AC06 (the attack resists the model)" in text
     assert "pooled metrics only" in text and "- a listed gap" in text
     assert chr(0x2014) not in text and chr(0x2013) not in text
     frozen = tmp_path / "frozen.json"
@@ -366,3 +366,19 @@ def test_verify_recomputes_the_split_from_the_salt(export: Path, tmp_path: Path)
     manifest["salt"] = "another-salt"
     (out / cb.MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
     assert any("do not follow from the salt" in p for p in verify(out))
+
+
+def test_passing_classes_may_carry_a_recovered_note(export: Path, tmp_path: Path) -> None:
+    notes = tmp_path / "notes.json"
+    data = json.loads(NOTES.read_text("utf-8"))
+    data["classes"]["AC01"] = {"status": "recovered", "finding": "Rescued by method two."}
+    notes.write_text(json.dumps(data), encoding="utf-8")
+    out = tmp_path / "corpus"
+    cb.build([export], out, "salt-1", notes)
+    text = render(out)
+    assert "| pass (recovered) |" in text
+    assert "Recovered: AC01 (recovered with part-wise generation)" in text
+    data["classes"]["AC06"] = {"status": "recovered", "finding": "x"}
+    notes.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(cb.CorpusError, match="must match"):
+        cb.build([export], tmp_path / "again", "salt-1", notes)

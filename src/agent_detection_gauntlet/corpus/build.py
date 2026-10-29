@@ -203,8 +203,12 @@ class BuildSummary:
 # Why a class that succeeds at baseline still has fewer successful groups than the floor.
 # Different findings, so the corpus names them differently.
 BELOW_FLOOR_STATUSES: dict[str, str] = {
-    "low-success": "the attack resists this model: few inputs succeed",
-    "underpowered": "the seeding method could not preserve the attack's structure",
+    "low-success": "the attack resists the model",
+    "underpowered": "seeding could not produce enough genuinely distinct successful variants",
+}
+# A class at or above the floor may carry a note too, when how it got there is a finding.
+PASSING_STATUSES: dict[str, str] = {
+    "recovered": "recovered with part-wise generation",
 }
 
 
@@ -218,8 +222,9 @@ def read_notes(path: Path | None) -> dict[str, Any]:
     if not isinstance(classes, dict) or not isinstance(gaps, list):
         raise CorpusError(f"{shown_path(path)}: needs a 'classes' object and a 'known_gaps' list")
     for cls, note in classes.items():
-        if not isinstance(note, dict) or note.get("status") not in BELOW_FLOOR_STATUSES:
-            raise CorpusError(f"{cls}: status must be one of {sorted(BELOW_FLOOR_STATUSES)}")
+        known = {**BELOW_FLOOR_STATUSES, **PASSING_STATUSES}
+        if not isinstance(note, dict) or note.get("status") not in known:
+            raise CorpusError(f"{cls}: status must be one of {sorted(known)}")
         if not isinstance(note.get("finding"), str) or not note["finding"].strip():
             raise CorpusError(f"{cls}: a note needs its finding")
     if not all(isinstance(g, str) and g.strip() for g in gaps):
@@ -288,11 +293,18 @@ def build(
         for c in succeeding
         if sum(1 for g in groups.values() if g.cls == c and g.succeeded) < MIN_GROUPS_FOR_FLOOR
     )
-    noted = set(notes["classes"])
+    noted = {c for c, note in notes["classes"].items() if note["status"] in BELOW_FLOOR_STATUSES}
     if noted != set(below_floor):
         raise CorpusError(
             f"below-floor classes {below_floor} and noted classes {sorted(noted)} must match"
         )
+    wrongly_passing = sorted(
+        c
+        for c, note in notes["classes"].items()
+        if note["status"] in PASSING_STATUSES and c in below_floor
+    )
+    if wrongly_passing:
+        raise CorpusError(f"classes below the floor cannot be noted as passing: {wrongly_passing}")
     attack_classes = {g.cls for g in groups.values() if g.cls != BENIGN_CLASS}
     manifest = {
         "manifest_version": 1,

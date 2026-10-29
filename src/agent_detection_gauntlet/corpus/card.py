@@ -12,10 +12,12 @@ from pathlib import Path
 from typing import Any
 
 from agent_detection_gauntlet.corpus.build import (
+    BELOW_FLOOR_STATUSES,
     BENIGN_CLASS,
     HASH_K,
     LABELS,
     MIN_HELDOUT_SUCCESSFUL,
+    PASSING_STATUSES,
     RAW_INDEX,
     class_of,
     group_of,
@@ -129,7 +131,13 @@ def render(corpus: Path) -> str:
     extra_gaps: list[str] = manifest.get("notes", {}).get("known_gaps", [])
 
     raw_by_kept = Counter(r["kept_as"] for r in raw)
-    seeded_groups = {group_of(x): x.derived_from for x in labels.values() if x.derived_from}
+    # A seeded group is one a seeded variant names; a near-duplicate that joined its parent's
+    # group does not make the parent's group seeded.
+    seeded_groups = {
+        group_of(x): x.derived_from
+        for x in labels.values()
+        if x.derived_from and group_of(x) != x.derived_from
+    }
     arms = sorted({x.condition or "unknown" for x in labels.values()})
     classes = [*sorted({class_of(x) for x in labels.values()} - {BENIGN_CLASS}), BENIGN_CLASS]
     out: list[str] = []
@@ -173,6 +181,8 @@ def render(corpus: Path) -> str:
         high = max(r[1] for r in seed_ranges)
         w(f"- Seeds: {low} to {high} (base seed plus run index; removed from the traces).")
     w(f"- Arms: {', '.join(arms)}. `guardrails` is `off` for baseline and `on` otherwise.")
+    w("- The person names in the traces (alex, jordan, sam, taylor, casey, morgan) are synthetic")
+    w("  sandbox identities of the source lab, on the reserved `.test` domain, not real people.")
     w("")
 
     w("## Counts per class, arm and split")
@@ -217,7 +227,7 @@ def render(corpus: Path) -> str:
         elif c in low_success:
             status = noted[c]["status"]
         elif len(ok) >= MIN_GROUPS and held >= MIN_HELDOUT_SUCCESSFUL:
-            status = "pass"
+            status = f"pass ({noted[c]['status']})" if c in noted else "pass"
         else:
             status = "SHORT"
         if c not in ineffective and c not in low_success:
@@ -248,11 +258,22 @@ def render(corpus: Path) -> str:
         winners = [i for i in members if i["succeeded"]]
         held_ok = sum(1 for i in winners if i["split"] == "heldout")
         status = noted[c]["status"]
-        w(f"{status.capitalize()}: {c}. {len(winners)} of {len(members)} groups succeed at")
-        w(f"baseline, below the floor of {MIN_GROUPS}. {noted[c]['finding']}")
+        reason = BELOW_FLOOR_STATUSES[status]
+        w(f"{status.capitalize()}: {c} ({reason}). {len(winners)} of {len(members)} groups")
+        w(f"succeed at baseline, below the floor of {MIN_GROUPS}. {noted[c]['finding']}")
         w(f"Its traces are included and labeled; with {held_ok} successful heldout group(s) it")
         w("contributes to pooled metrics only, and any per-class figure for it is flagged as")
         w("underpowered.")
+        w("")
+
+    for c in sorted(c for c in noted if c not in low_success):
+        status = noted[c]["status"]
+        w(f"{status.capitalize()}: {c} ({PASSING_STATUSES[status]}). {noted[c]['finding']}")
+        w("")
+    if low_success or any(c not in low_success for c in noted):
+        w("These are different findings and are labeled differently: `low-success` is about")
+        w("the attack against this model, `underpowered` about the seeding method, `recovered`")
+        w("about a class the first method failed and a second one rescued.")
         w("")
 
     w("## Attack success rate per class")
