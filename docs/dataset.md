@@ -13,7 +13,7 @@ fails when this file and the corpus disagree.
 
 - Model: `llama3.1:8b`, digest `46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e`.
 - Temperature: 0.0.
-- Seeds: 1337 to 1346 (base seed plus run index).
+- Seeds: 1337 to 1346 (base seed plus run index; removed from the traces).
 - Arms: baseline, combined. `guardrails` is `off` for baseline and `on` otherwise.
 
 ## Counts per class, arm and split
@@ -145,15 +145,20 @@ one whose references lead back to untrusted, secret or pii content.
 - Heldout groups: 48 of 150.
 - `SPLIT_MANIFEST.json` pins the sha256 of every heldout file and of the labels file; CI
   fails if either, or the manifest, changes after the freeze commit.
-- Re-freeze: only deliberately, as a new manifest version in its own PR that states why;
-  every result computed on the old heldout split is then invalid and must be rerun.
+- Re-freeze: only deliberately, in its own PR that states why and also changes the CI
+  freeze check to the new manifest, so the change is visible in review; every result
+  computed on the old heldout split is then invalid and must be rerun. The manifest
+  includes the class notes, so their wording is frozen with it.
 
 ## Redaction
 
 The exporter rewrites lab temporary paths to sandbox-relative paths, replaces home
 folders with `<home>` and the process's user and host names with `<host>`, names run
 logs by file name only, and runs the leak guard on every exported file (any hit aborts
-the export). Trace ids are hashes and every trace starts at one fixed epoch, so neither
+the export). The corpus build removes the per-run seed from every trace (its range per
+source is in the manifest), because seeded variants ran fewer runs than authored ones and
+the seed would hint at the label. Trace ids are hashes and every trace starts at one
+fixed epoch, so neither
 ids, file order nor timestamps carry the label.
 
 ## Phase 3 reporting plan
@@ -184,3 +189,4 @@ ids, file order nor timestamps carry the label.
 - Four kept seeded variants are near-copies of their parent (word similarity at least 0.90): AC04-S05, AC07-S34, AC07-S35, AC12A-S05. They count as distinct groups here; a stricter reading would drop them, leaving AC07 with 5 successful groups (above the floor of 4) and AC12A with 3 (below it).
 - Most AC11 variants drop the tool's innocuous cover line and some AC12B variants state the replacement claim as an imperative: same attack, easier to spot than the authored scenario.
 - Seeded variants ran 3 times per arm, authored scenarios and benign tasks 10 times; at temperature 0 runs repeat, so raw counts are not comparable across the two, groups are.
+- Attack recipients sit on the exfil.example domain, a choice of the source lab that makes them easy to spot; a rule keyed on that domain would score well here and nowhere else, so Phase 2 rules must not use it (it also appears in a few benign traces).

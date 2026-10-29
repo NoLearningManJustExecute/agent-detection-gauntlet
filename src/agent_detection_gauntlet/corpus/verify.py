@@ -16,6 +16,7 @@ from agent_detection_gauntlet.corpus.build import (
     LABELS,
     MANIFEST,
     CorpusError,
+    assign_splits,
     group_of,
     read_manifest,
 )
@@ -53,6 +54,13 @@ def verify(corpus: Path, frozen: bytes | None = None) -> list[str]:
             problems.append(
                 f"trace {label.trace_id}: split {label.split} but group {group} is {expected}"
             )
+    # The split must follow from the salt and the labels, not only from the manifest's word.
+    recomputed = assign_splits(list(labels.values()), str(manifest.get("salt", "")))
+    disagree = sorted(
+        g for g, info in recomputed.items() if groups.get(g, {}).get("split") != info.split.value
+    )
+    if disagree or set(recomputed) != set(groups):
+        problems.append(f"group splits do not follow from the salt: {disagree[:5]}")
     heldout = sorted(g for g, info in groups.items() if info.get("split") == Split.HELDOUT.value)
     if heldout != manifest.get("heldout_groups"):
         problems.append("heldout_groups does not match the per-group splits")

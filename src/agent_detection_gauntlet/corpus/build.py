@@ -51,6 +51,10 @@ MIN_HELDOUT_SUCCESSFUL = 2
 MIN_GROUPS_FOR_FLOOR = 4
 BASELINE = "baseline"
 BENIGN_CLASS = "benign"
+# Attributes removed from corpus traces. The per-run seed is base seed plus run index, and
+# sources ran different numbers of runs, so its value would hint at the label. Its range per
+# source is kept in the manifest instead.
+STRIPPED_ATTRIBUTES: tuple[str, ...] = ("gen_ai.request.seed",)
 # Label fields that name the run, not what happened in it; dedupe ignores them.
 RUN_FIELDS: tuple[str, ...] = ("trace_id", "source_run_id", "split")
 
@@ -74,6 +78,26 @@ def _raw_lines(directory: Path) -> dict[str, list[str]]:
         for line in file.read_text(encoding="utf-8").splitlines():
             grouped.setdefault(strict_json_loads(line)["trace_id"], []).append(line)
     return grouped
+
+
+def _strip(line: str) -> str:
+    event = strict_json_loads(line)
+    attributes = event.get("attributes", {})
+    if not any(name in attributes for name in STRIPPED_ATTRIBUTES):
+        return line
+    for name in STRIPPED_ATTRIBUTES:
+        attributes.pop(name, None)
+    return canonical_json(event)
+
+
+def _seed_range(source: Source) -> list[int] | None:
+    seeds = [
+        attributes["gen_ai.request.seed"]
+        for lines in source.lines[HASH_K].values()
+        for attributes in (strict_json_loads(x).get("attributes", {}) for x in lines)
+        if isinstance(attributes.get("gen_ai.request.seed"), int)
+    ]
+    return [min(seeds), max(seeds)] if seeds else None
 
 
 def load_source(path: Path) -> Source:
@@ -253,7 +277,7 @@ def build(
         members = sorted(x.trace_id for x in final if x.split is split)
         for k in ks:
             rel = f"{split.value}/k{k}/traces.jsonl"
-            body = "".join(line + "\n" for t in members for line in unique[t].lines[k][t])
+            body = "".join(_strip(line) + "\n" for t in members for line in unique[t].lines[k][t])
             write_text(out / rel, body)
             if split is Split.HELDOUT:
                 files[rel] = _sha256(out / rel)
@@ -293,7 +317,11 @@ def build(
         },
         "heldout_groups": sorted(g for g, i in groups.items() if i.split is Split.HELDOUT),
         "files": files,
-        "sources": [{k: v for k, v in s.manifest.items() if k != "files"} for s in loaded],
+        "stripped_attributes": list(STRIPPED_ATTRIBUTES),
+        "sources": [
+            {**{k: v for k, v in s.manifest.items() if k != "files"}, "seeds": _seed_range(s)}
+            for s in loaded
+        ],
     }
     write_text(out / MANIFEST, pretty_json(manifest))
     return BuildSummary(

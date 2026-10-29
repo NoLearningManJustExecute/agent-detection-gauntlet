@@ -160,19 +160,18 @@ def render(corpus: Path) -> str:
     w("")
     models = sorted({(s.get("model"), s.get("model_digest")) for s in manifest["sources"]})
     temps: set[object] = set()
-    seeds: list[int] = []
     for trace in traces[HASH_K].values():
         for e in trace.events:
             if e.event_type.value == "llm.request":
                 temps.add(e.attributes.get("gen_ai.request.temperature"))
-                seed = e.attributes.get("gen_ai.request.seed")
-                if isinstance(seed, int):
-                    seeds.append(seed)
+    seed_ranges = [s["seeds"] for s in manifest["sources"] if s.get("seeds")]
     for model, digest in models:
         w(f"- Model: `{model}`, digest `{digest}`.")
     w(f"- Temperature: {', '.join(str(t) for t in sorted(temps, key=str))}.")
-    if seeds:
-        w(f"- Seeds: {min(seeds)} to {max(seeds)} (base seed plus run index).")
+    if seed_ranges:
+        low = min(r[0] for r in seed_ranges)
+        high = max(r[1] for r in seed_ranges)
+        w(f"- Seeds: {low} to {high} (base seed plus run index; removed from the traces).")
     w(f"- Arms: {', '.join(arms)}. `guardrails` is `off` for baseline and `on` otherwise.")
     w("")
 
@@ -360,8 +359,10 @@ def render(corpus: Path) -> str:
     w(f"- Heldout groups: {len(manifest['heldout_groups'])} of {len(groups)}.")
     w("- `SPLIT_MANIFEST.json` pins the sha256 of every heldout file and of the labels file; CI")
     w("  fails if either, or the manifest, changes after the freeze commit.")
-    w("- Re-freeze: only deliberately, as a new manifest version in its own PR that states why;")
-    w("  every result computed on the old heldout split is then invalid and must be rerun.")
+    w("- Re-freeze: only deliberately, in its own PR that states why and also changes the CI")
+    w("  freeze check to the new manifest, so the change is visible in review; every result")
+    w("  computed on the old heldout split is then invalid and must be rerun. The manifest")
+    w("  includes the class notes, so their wording is frozen with it.")
     w("")
 
     w("## Redaction")
@@ -369,7 +370,10 @@ def render(corpus: Path) -> str:
     w("The exporter rewrites lab temporary paths to sandbox-relative paths, replaces home")
     w("folders with `<home>` and the process's user and host names with `<host>`, names run")
     w("logs by file name only, and runs the leak guard on every exported file (any hit aborts")
-    w("the export). Trace ids are hashes and every trace starts at one fixed epoch, so neither")
+    w("the export). The corpus build removes the per-run seed from every trace (its range per")
+    w("source is in the manifest), because seeded variants ran fewer runs than authored ones and")
+    w("the seed would hint at the label. Trace ids are hashes and every trace starts at one")
+    w("fixed epoch, so neither")
     w("ids, file order nor timestamps carry the label.")
     w("")
 

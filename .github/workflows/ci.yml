@@ -215,9 +215,10 @@ jobs:
           manifest=datasets/corpus/SPLIT_MANIFEST.json
           frozen="$RUNNER_TEMP/frozen-manifest.json"
           if [ "$EVENT" = "pull_request" ]; then
-            git fetch --no-tags --quiet origin "$BASE_REF"
-            if git cat-file -e "FETCH_HEAD:$manifest" 2>/dev/null; then
-              git show "FETCH_HEAD:$manifest" > "$frozen"
+            # fetch-depth 0 already checked out every branch; no fetch (no credentials here).
+            base="origin/$BASE_REF"
+            if git cat-file -e "$base:$manifest" 2>/dev/null; then
+              git show "$base:$manifest" > "$frozen"
             fi
           else
             first=$(git log --diff-filter=A --format=%H -- "$manifest" | tail -n 1)

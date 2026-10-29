@@ -347,3 +347,22 @@ def test_notes_must_match_the_below_floor_classes(export: Path, tmp_path: Path) 
     )
     with pytest.raises(cb.CorpusError, match="status must be one of"):
         cb.build([export], tmp_path / "b", "s", wrong)
+
+
+def test_build_strips_the_run_seed_and_records_its_range(export: Path, tmp_path: Path) -> None:
+    out = tmp_path / "corpus"
+    cb.build([export], out, "salt-1", NOTES)
+    for path in out.rglob("traces.jsonl"):
+        assert "gen_ai.request.seed" not in path.read_text("utf-8")
+    manifest = cb.read_manifest(out)
+    assert manifest["stripped_attributes"] == ["gen_ai.request.seed"]
+    assert manifest["sources"][0]["seeds"] == [1, 3]
+
+
+def test_verify_recomputes_the_split_from_the_salt(export: Path, tmp_path: Path) -> None:
+    out = tmp_path / "corpus"
+    cb.build([export], out, "salt-1", NOTES)
+    manifest = json.loads((out / cb.MANIFEST).read_text("utf-8"))
+    manifest["salt"] = "another-salt"
+    (out / cb.MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
+    assert any("do not follow from the salt" in p for p in verify(out))
