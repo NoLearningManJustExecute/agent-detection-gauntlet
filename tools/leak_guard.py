@@ -4,18 +4,27 @@
 Standalone and standard library only, so this file can be copied into another repository as is.
 
 Scopes (combinable):
-  --tree       tracked files plus untracked files that are not ignored
-  --history    every commit and annotated tag reachable from any ref: author, committer, tagger,
-               message, added lines, and every blob that the text diff does not show
-  --text FILE  one arbitrary file, for example a pull request body before it is posted
-  --pr         the current pull request's title, body, reviews and comments (CI, GitHub REST API)
-  --all        --tree and --history
+  --tree          tracked files plus untracked files that are not ignored
+  --history       every commit and annotated tag reachable from any ref: author, committer,
+                  tagger, message, added lines, and every blob that the text diff does not show
+  --range A..B    the same commit checks, limited to the commits in A..B (the blocking CI gate)
+  --text FILE     one arbitrary file, for example a pull request body before it is posted
+  --pr            the current pull request's title, body, reviews and comments (CI, REST API)
+  --all           --tree and --history
 
 Two kinds of check run on every scanned text:
   generic rules   patterns that hold nothing personal: absolute paths, non-allowlisted emails,
                   forbidden strings, secrets
   private list    salted SHA-256 hashes of private identifiers; the guard only learns that a
                   hash matched and never prints the matching text
+
+History baseline (.leakguard-baseline): known generic hits in commits at or before a pinned cutoff
+commit, stored as fingerprints only (commit, rule, line, path). It never applies to the working
+tree, to commits after the cutoff, or to private list hits.
+
+Tools:
+  --emit-baseline CUTOFF   print baseline candidates for review (fingerprints only)
+  --strip-png FILE...      remove metadata chunks from PNG files in place
 
 Exit codes: 0 clean, 1 at least one hit, 2 a usage or setup problem.
 """
@@ -26,21 +35,30 @@ import argparse
 import bisect
 import hashlib
 import json
+import math
 import os
 import re
 import string
+import struct
 import subprocess
 import sys
 import urllib.request
+from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 ALLOW_FILE = ".leakguard-allow"
+BASELINE_FILE = ".leakguard-baseline"
 DEFAULT_DENYLIST = Path("..") / "_planning" / "private-denylist.hashes"
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf"})
-METADATA_MARKERS = (b"Exif", b"eXIf", b"EXIF", b"xmpmeta", b"XML:com.adobe.xmp")
+METADATA_MARKERS = (b"Exif", b"eXIf", b"EXIF", b"xmpmeta", b"XML:com.adobe.xmp", b"c2pa")
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_METADATA_CHUNKS = frozenset({b"eXIf", b"tEXt", b"iTXt", b"zTXt", b"caBX"})
+PNG_KEEP_CHUNKS = frozenset(
+    {b"IHDR", b"PLTE", b"tRNS", b"cHRM", b"gAMA", b"sRGB", b"sBIT", b"pHYs", b"bKGD", b"IDAT"}
+)
 BINARY_SNIFF_BYTES = 8192
 
 
@@ -51,11 +69,18 @@ class GuardSetupError(Exception):
 # ---------------------------------------------------------------- generic rules
 
 
-ALLOWED_EMAIL_DOMAINS = frozenset(
-    {"users.noreply.github.com", "noreply.github.com", "example.com", "example.net", "example.org"}
-)
+ALLOWED_EMAIL_DOMAINS = frozenset({"users.noreply.github.com", "noreply.github.com"})
+RESERVED_EMAIL_DOMAINS = ("example.com", "example.net", "example.org")
 ALLOWED_GITHUB_LOCAL_PARTS = frozenset({"noreply", "support"})
 ALLOWED_EMAIL_SUFFIXES = (".example", ".test", ".invalid")
+
+# Windows locations that hold no user name, and the usual documentation placeholder.
+SYSTEM_PATH_ROOTS = frozenset(
+    {"windows", "program files", "program files (x86)", "programdata", "path"}
+)
+USER_PATH_SEGMENTS = frozenset({"users", "documents and settings"})
+FIXTURE_DIRECTORIES = ("tests", "test", "docs", "fixtures")
+PLACEHOLDER_WORDS = ("example", "sample", "dummy", "fake", "placeholder", "redacted", "xxxx")
 
 
 def email_allowed(address: str) -> bool:
@@ -65,59 +90,140 @@ def email_allowed(address: str) -> bool:
         return True
     if domain == "github.com":
         return local.lower() in ALLOWED_GITHUB_LOCAL_PARTS
+    if any(domain == base or domain.endswith(f".{base}") for base in RESERVED_EMAIL_DOMAINS):
+        return True
     return domain.endswith(ALLOWED_EMAIL_SUFFIXES)
 
 
-def runner_home_allowed(match: str, origin: str | None) -> bool:
+def is_fixture_path(origin: str | None) -> bool:
+    """Test fixtures and documentation, where generic probe values are expected."""
+    if origin is None:
+        return False
+    parts = origin.lower().split("/")[:-1]
+    return any(part in FIXTURE_DIRECTORIES for part in parts)
+
+
+def _path_after(text: str, start: int) -> str:
+    """The path written at ``start``, which may contain spaces (for example Program Files)."""
+    end = start
+    while end < len(text) and text[end] not in "\"'`<>|*?\n\r":
+        end += 1
+    return text[start:end]
+
+
+def windows_path_exempt(match: re.Match[str], text: str, origin: str | None) -> bool:
+    """System locations never name a user. In fixtures and docs only user folders count."""
+    segments = [
+        part.strip().lower() for part in re.split(r"[\\/]+", _path_after(text, match.start())[2:])
+    ]
+    segments = [part for part in segments if part]
+    if segments and segments[0] in SYSTEM_PATH_ROOTS:
+        return True
+    return is_fixture_path(origin) and not USER_PATH_SEGMENTS.intersection(segments)
+
+
+def runner_home_exempt(match: re.Match[str], text: str, origin: str | None) -> bool:
     """The CI runner's home directory may appear in workflow files only."""
+    found = match.group()
     return (
         origin is not None
         and origin.startswith(".github/")
-        and re.fullmatch(r"/home/runner(/.*)?", match) is not None
-        and ".." not in match.split("/")
+        and re.fullmatch(r"/home/runner(/.*)?", found) is not None
+        and ".." not in found.split("/")
     )
+
+
+def email_exempt(match: re.Match[str], text: str, origin: str | None) -> bool:
+    return email_allowed(match.group())
+
+
+def entropy(text: str) -> float:
+    """Shannon entropy in bits per character."""
+    if not text:
+        return 0.0
+    counts = Counter(text)
+    return -sum(n / len(text) * math.log2(n / len(text)) for n in counts.values())
+
+
+def looks_secret(body: str) -> bool:
+    """A credential body is high entropy, mixes character classes and is not a placeholder."""
+    lowered = body.lower()
+    if any(word in lowered for word in PLACEHOLDER_WORDS):
+        return False
+    classes = sum(bool(re.search(p, body)) for p in ("[a-z]", "[A-Z]", "[0-9]"))
+    return classes >= 2 and entropy(body) >= 3.0
+
+
+def secret_exempt(match: re.Match[str], text: str, origin: str | None) -> bool:
+    return not looks_secret(match.group("body"))
 
 
 @dataclass(frozen=True)
 class GenericRule:
     name: str
     pattern: re.Pattern[str]
-    allowed: Callable[[str, str | None], bool] | None = None
+    exempt: Callable[[re.Match[str], str, str | None], bool] | None = None
 
 
 # Several patterns are assembled from pieces so that this file never matches its own rules.
 GENERIC_RULES: tuple[GenericRule, ...] = (
-    GenericRule("windows-path", re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/][^\s\"'`<>|*?]*")),
+    GenericRule(
+        "windows-path",
+        re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/][^\s\"'`<>|*?]*"),
+        windows_path_exempt,
+    ),
     GenericRule("unc-path", re.compile(r"(?<![\\\w])\\\\[A-Za-z0-9][\w.$-]*\\[\w.$-]+")),
     GenericRule("unc-path", re.compile(r"(?<![\\\w])\\{4}[A-Za-z0-9][\w.$-]*\\{2}[\w.$-]+")),
     GenericRule("macos-home-path", re.compile(r"/Users/[A-Za-z0-9._-]+")),
     GenericRule("windows-home-path", re.compile(r"/[A-Za-z]/users/[A-Za-z0-9._-]+", re.IGNORECASE)),
     GenericRule(
-        "linux-home-path",
-        re.compile(r"/home/[A-Za-z0-9._-]+[^\s\"'`<>|]*"),
-        lambda match, origin: runner_home_allowed(match, origin),
+        "linux-home-path", re.compile(r"/home/[A-Za-z0-9._-]+[^\s\"'`<>|]*"), runner_home_exempt
     ),
     GenericRule("userprofile-variable", re.compile("%" + "USERPROFILE" + "%", re.IGNORECASE)),
     GenericRule("home-tilde-path", re.compile(r"~[\\/][A-Za-z0-9._-]+")),
     GenericRule(
         "email-address",
         re.compile(r"[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}"),
-        lambda match, origin: email_allowed(match),
+        email_exempt,
     ),
     GenericRule("forbidden-domain", re.compile(re.escape("anthropic" + ".com"), re.IGNORECASE)),
     GenericRule("forbidden-domain", re.compile(re.escape("claude" + ".ai"), re.IGNORECASE)),
-    GenericRule("generated-footer", re.compile("Generated" + r"\s+with", re.IGNORECASE)),
+    GenericRule("generated-footer", re.compile(r"\b" + "Generated" + r"\s+with", re.IGNORECASE)),
     GenericRule("session-id", re.compile("session" + r"_\w{20,}")),
     GenericRule("dash-character", re.compile("[" + chr(0x2013) + chr(0x2014) + "]")),
+    # A key needs its header and a base64 body: a bare header line is not a key.
     GenericRule(
-        "private-key", re.compile("-{5}BEGIN " + r"(?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-{5}")
+        "private-key",
+        re.compile(
+            "-{5}BEGIN "
+            + r"(?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-{5}(?:\s|\\[nr])+"
+            + r"(?:[A-Za-z-]+: [^\n]*(?:\s|\\[nr])+)*(?P<body>[A-Za-z0-9+/]{40,})"
+        ),
+        secret_exempt,
     ),
-    GenericRule("github-token", re.compile(r"(?<![A-Za-z0-9])gh[oprsu]_[A-Za-z0-9]{20,}")),
-    GenericRule("github-token", re.compile("github" + r"_pat_[A-Za-z0-9_]{20,}")),
-    GenericRule("api-key", re.compile(r"(?<![A-Za-z0-9-])sk-[A-Za-z0-9_-]{20,}")),
-    GenericRule("slack-token", re.compile(r"(?<![A-Za-z0-9])xox[bp]-[A-Za-z0-9-]{10,}")),
-    GenericRule("aws-access-key", re.compile(r"(?<![A-Z0-9])AKIA[0-9A-Z]{16}(?![0-9A-Z])")),
+    GenericRule(
+        "github-token",
+        re.compile(r"(?<![A-Za-z0-9])gh[oprsu]_(?P<body>[A-Za-z0-9]{20,})"),
+        secret_exempt,
+    ),
+    GenericRule(
+        "github-token", re.compile("github" + r"_pat_(?P<body>[A-Za-z0-9_]{20,})"), secret_exempt
+    ),
+    GenericRule(
+        "api-key", re.compile(r"(?<![A-Za-z0-9-])sk-(?P<body>[A-Za-z0-9_-]{20,})"), secret_exempt
+    ),
+    GenericRule(
+        "slack-token",
+        re.compile(r"(?<![A-Za-z0-9])xox[bp]-(?P<body>[A-Za-z0-9-]{10,})"),
+        secret_exempt,
+    ),
+    GenericRule(
+        "aws-access-key",
+        re.compile(r"(?<![A-Z0-9])AKIA(?P<body>[0-9A-Z]{16})(?![0-9A-Z])"),
+        secret_exempt,
+    ),
 )
+GENERIC_RULE_NAMES = frozenset(rule.name for rule in GENERIC_RULES) | {"image-metadata"}
 
 
 def mask(text: str) -> str:
@@ -214,7 +320,7 @@ def token_streams(text: str) -> list[list[Token]]:
     return [raw, stripped, alnum] if stripped != raw else [raw, alnum]
 
 
-# ---------------------------------------------------------------- allowlist
+# ---------------------------------------------------------------- allowlist and baseline
 
 
 @dataclass(frozen=True)
@@ -254,6 +360,85 @@ class Allowlist:
         return origin == ALLOW_FILE and any(found in value for value in self.values)
 
 
+# Commit fields that are not files get a pseudo path starting with a colon.
+FIELD_PATHS = frozenset(
+    {":author name", ":author email", ":committer name", ":committer email", ":message"}
+)
+Fingerprint = tuple[str, str, int, str]
+
+
+def _check_baseline_path(path: str) -> bool:
+    if path in FIELD_PATHS:
+        return True
+    return not (
+        not path
+        or path.startswith("/")
+        or "\\" in path
+        or re.match(r"[A-Za-z]:", path)
+        or any(part in ("", ".", "..") for part in path.split("/"))
+    )
+
+
+@dataclass(frozen=True)
+class Baseline:
+    """Known generic hits in history up to a pinned cutoff commit, as fingerprints only.
+
+    Each entry is ``<commit> <rule> <line> <path>``. Private list hits cannot be entered: the
+    rule name ``denylist`` is refused here, and the scanner only consults the baseline for
+    generic rules.
+    """
+
+    cutoff: str
+    entries: frozenset[Fingerprint] = frozenset()
+
+    @classmethod
+    def parse(cls, text: str, denylist: Denylist | None) -> Baseline:
+        cutoff: str | None = None
+        entries: set[Fingerprint] = set()
+        for number, raw in enumerate(text.splitlines(), start=1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            where = f"{BASELINE_FILE} line {number}"
+            if line.startswith("cutoff "):
+                value = line[7:].strip()
+                if cutoff is not None or not re.fullmatch(r"[0-9a-f]{40}", value):
+                    raise GuardSetupError(f"{where}: one 'cutoff <40 hex commit>' line is allowed")
+                cutoff = value
+                continue
+            parts = line.split(" ", 3)
+            if len(parts) != 4:
+                raise GuardSetupError(f"{where}: use '<commit> <rule> <line> <path>'")
+            commit, rule, line_number, path = parts
+            if rule == "denylist":
+                raise GuardSetupError(f"{where}: private list hits can never be baselined")
+            if rule not in GENERIC_RULE_NAMES:
+                raise GuardSetupError(f"{where}: unknown rule")
+            if not re.fullmatch(r"[0-9a-f]{40}", commit) or not line_number.isdigit():
+                raise GuardSetupError(f"{where}: commit must be 40 hex, line a number")
+            if not _check_baseline_path(path):
+                raise GuardSetupError(f"{where}: path must be repository-relative")
+            if denylist is not None and any(denylist.matches(path)):
+                raise GuardSetupError(f"{where}: path holds a private identifier")
+            entries.add((commit, rule, int(line_number), path))
+        if cutoff is None:
+            raise GuardSetupError(f"{BASELINE_FILE} needs a cutoff line")
+        return cls(cutoff, frozenset(entries))
+
+    def verify(self, root: Path) -> None:
+        """The cutoff must exist, and every entry must be at or before it."""
+        if not git_ok(root, "cat-file", "-e", f"{self.cutoff}^{{commit}}"):
+            raise GuardSetupError(f"{BASELINE_FILE}: cutoff commit is not in this clone")
+        for commit in sorted({entry[0] for entry in self.entries}):
+            if not git_ok(root, "merge-base", "--is-ancestor", commit, self.cutoff):
+                raise GuardSetupError(
+                    f"{BASELINE_FILE}: commit {commit[:12]} is not at or before the cutoff"
+                )
+
+    def covers(self, fingerprint: Fingerprint) -> bool:
+        return fingerprint in self.entries
+
+
 # ---------------------------------------------------------------- scanning
 
 
@@ -262,17 +447,23 @@ class Hit:
     location: str
     rule: str
     shown: str
+    fingerprint: Fingerprint | None = None
 
-    def render(self) -> str:
-        return f"{self.location}: {self.rule}: {self.shown}"
+    def render(self, show_match: bool) -> str:
+        """Private list hits always show their hash number, which is not matched content."""
+        if show_match or self.rule == "denylist":
+            return f"{self.location}: {self.rule}: {self.shown}"
+        return f"{self.location}: {self.rule}"
 
 
 @dataclass
 class Scanner:
     denylist: Denylist | None
     allowlist: Allowlist = field(default_factory=Allowlist)
+    baseline: Baseline | None = None
     hits: list[Hit] = field(default_factory=list)
     notices: list[str] = field(default_factory=list)
+    baselined: int = 0
 
     def scan_text(
         self,
@@ -281,18 +472,21 @@ class Scanner:
         *,
         origin: str | None = None,
         line_map: Sequence[int] | None = None,
+        commit: str | None = None,
+        path_key: str | None = None,
     ) -> None:
         """Scan ``text`` and record hits as ``label:line``.
 
         ``origin`` is the repository path the text belongs to, for path-scoped exceptions.
         ``line_map`` maps the 1-based line of ``text`` to the line number to report.
+        ``commit`` and ``path_key`` identify history text, so its hits get fingerprints.
         """
 
-        def where(line: int) -> str:
-            shown = line_map[line - 1] if line_map is not None else line
-            return f"{label}:{shown}"
+        def line_number(line: int) -> int:
+            return line_map[line - 1] if line_map is not None else line
 
         starts = [0] + [index + 1 for index, char in enumerate(text) if char == "\n"]
+        key = path_key if path_key is not None else origin
         for rule in GENERIC_RULES:
             for match in rule.pattern.finditer(text):
                 found = match.group()
@@ -301,15 +495,25 @@ class Scanner:
                 whole_line = text[starts[line - 1] : len(text) if end < 0 else end].strip()
                 if self.allowlist.permits(found, whole_line, origin):
                     continue
-                if rule.allowed is not None and rule.allowed(found, origin):
+                if rule.exempt is not None and rule.exempt(match, text, origin):
+                    continue
+                reported = line_number(line)
+                fingerprint = (
+                    (commit, rule.name, reported, key)
+                    if commit is not None and key is not None
+                    else None
+                )
+                if fingerprint and self.baseline and self.baseline.covers(fingerprint):
+                    self.baselined += 1
                     continue
                 private = self.denylist is not None and any(self.denylist.matches(found))
-                self.hits.append(Hit(where(line), rule.name, "****" if private else mask(found)))
+                shown = "****" if private else mask(found)
+                self.hits.append(Hit(f"{label}:{reported}", rule.name, shown, fingerprint))
+        # Private list hits never consult the allowlist or the baseline.
         if self.denylist is not None:
             for line, entry in self.denylist.matches(text):
-                self.hits.append(
-                    Hit(where(line), "denylist", f"private identifier (hash #{entry})")
-                )
+                where = f"{label}:{line_number(line)}"
+                self.hits.append(Hit(where, "denylist", f"private identifier (hash #{entry})"))
 
     def safe_label(self, path: str) -> str:
         """``path`` for use in output, or a stand-in when the path itself would leak.
@@ -322,27 +526,70 @@ class Scanner:
             return f"<path withheld {hashlib.sha256(path.encode('utf-8')).hexdigest()[:10]}>"
         return path
 
-    def scan_path(self, path: str, label: str) -> None:
+    def scan_path(self, path: str, label: str, commit: str | None = None) -> None:
         """Scan a file name. Hits are reported under ``label``, which must already be safe."""
-        self.scan_text(path, f"{label} (file name)", origin=path)
+        self.scan_text(path, f"{label} (file name)", origin=path, commit=commit, path_key=path)
 
-    def scan_image(self, data: bytes, label: str) -> None:
+    def scan_image(self, data: bytes, label: str, fingerprint: Fingerprint | None = None) -> None:
         self.notices.append(f"{label}: image, needs manual review")
-        if any(marker in data for marker in METADATA_MARKERS):
-            self.hits.append(Hit(label, "image-metadata", "EXIF or XMP metadata present"))
+        if not image_metadata(data):
+            return
+        if fingerprint and self.baseline and self.baseline.covers(fingerprint):
+            self.baselined += 1
+            return
+        self.hits.append(Hit(label, "image-metadata", "metadata present", fingerprint))
 
-    def scan_file_bytes(self, data: bytes, path: str, label: str | None = None) -> None:
+    def scan_file_bytes(
+        self, data: bytes, path: str, label: str | None = None, commit: str | None = None
+    ) -> None:
         """Scan one file's bytes. ``path`` decides image handling and path-scoped exceptions."""
         shown = self.safe_label(path) if label is None else label
         image = Path(path).suffix.lower() in IMAGE_SUFFIXES
         if image:
-            self.scan_image(data, shown)
+            fingerprint = (commit, "image-metadata", 0, path) if commit else None
+            self.scan_image(data, shown, fingerprint)
         text = decode_text(data)
         if text is None:
             if not image:
                 self.notices.append(f"{shown}: binary, not scanned")
             return
-        self.scan_text(text, shown, origin=path)
+        self.scan_text(text, shown, origin=path, commit=commit, path_key=path)
+
+
+def png_chunks(data: bytes) -> Iterator[tuple[bytes, bytes]]:
+    """(type, raw chunk bytes) for each chunk of a PNG file."""
+    offset = len(PNG_SIGNATURE)
+    while offset + 8 <= len(data):
+        (length,) = struct.unpack(">I", data[offset : offset + 4])
+        kind = data[offset + 4 : offset + 8]
+        end = offset + 12 + length
+        yield kind, data[offset:end]
+        if kind == b"IEND":
+            return
+        offset = end
+
+
+def image_metadata(data: bytes) -> bool:
+    """EXIF, XMP, C2PA content credentials, or PNG text chunks."""
+    if data.startswith(PNG_SIGNATURE) and any(
+        kind in PNG_METADATA_CHUNKS for kind, _ in png_chunks(data)
+    ):
+        return True
+    return any(marker in data for marker in METADATA_MARKERS)
+
+
+def strip_png(data: bytes) -> tuple[bytes, int]:
+    """The PNG with only image and color chunks kept, and the number of chunks removed."""
+    if not data.startswith(PNG_SIGNATURE):
+        raise GuardSetupError("not a PNG file")
+    kept = [PNG_SIGNATURE]
+    removed = 0
+    for kind, chunk in png_chunks(data):
+        if kind in PNG_KEEP_CHUNKS or kind == b"IEND":
+            kept.append(chunk)
+        else:
+            removed += 1
+    return b"".join(kept), removed
 
 
 _BOMS = (
@@ -379,6 +626,12 @@ def run_git(root: Path, *args: str) -> bytes:
         first = redact(message[0]) if message else f"exit code {result.returncode}"
         raise GuardSetupError(f"git {args[0]} failed: {first}")
     return result.stdout
+
+
+def git_ok(root: Path, *args: str) -> bool:
+    return (
+        subprocess.run(["git", *args], cwd=root, capture_output=True, check=False).returncode == 0
+    )
 
 
 def tree_files(root: Path) -> list[str]:
@@ -452,11 +705,12 @@ HISTORY_FORMAT = "%x00%H%x00%an%x00%ae%x00%cn%x00%ce%x00%B%x00"
 HISTORY_FIELDS = ("author name", "author email", "committer name", "committer email")
 
 
-def scan_history(scanner: Scanner, root: Path) -> None:
+def scan_commits(scanner: Scanner, root: Path, revisions: Sequence[str]) -> None:
+    """Commit metadata, added lines, and blobs the diff does not show, for ``revisions``."""
     output = run_git(
         root,
         "log",
-        "--all",
+        *revisions,
         "-p",
         "--unified=0",
         "--full-index",
@@ -473,22 +727,28 @@ def scan_history(scanner: Scanner, root: Path) -> None:
         sha, *people, message, patch = parts[index : index + 7]
         commit = f"commit {sha[:12]}"
         for name, value in zip(HISTORY_FIELDS, people, strict=True):
-            scanner.scan_text(value, f"{commit} {name}")
-        scanner.scan_text(message, f"{commit} message")
+            scanner.scan_text(value, f"{commit} {name}", commit=sha, path_key=f":{name}")
+        scanner.scan_text(message, f"{commit} message", commit=sha, path_key=":message")
         file_patches, text_blobs = parse_patch(patch)
         shown_as_text |= text_blobs
         for file_patch in file_patches:
             label = f"{commit} {scanner.safe_label(file_patch.path)}"
-            scanner.scan_path(file_patch.path, label)
+            scanner.scan_path(file_patch.path, label, sha)
             if file_patch.lines:
                 scanner.scan_text(
                     "\n".join(file_patch.lines),
                     label,
                     origin=file_patch.path,
                     line_map=file_patch.numbers,
+                    commit=sha,
+                    path_key=file_patch.path,
                 )
+    scan_blobs(scanner, root, revisions, shown_as_text)
+
+
+def scan_history(scanner: Scanner, root: Path) -> None:
+    scan_commits(scanner, root, ["--all"])
     scan_tags(scanner, root)
-    scan_blobs(scanner, root, shown_as_text)
 
 
 TAG_FORMAT = "%00%(refname:short)%00%(taggername)%00%(taggeremail)%00%(contents)"
@@ -496,7 +756,7 @@ TAG_FIELDS = ("name", "tagger name", "tagger email", "message")
 
 
 def scan_tags(scanner: Scanner, root: Path) -> None:
-    """Tag names, and the tagger and message of every annotated tag."""
+    """Tag names, and the tagger and message of every annotated tag. Never baselined."""
     output = run_git(root, "for-each-ref", f"--format={TAG_FORMAT}", "refs/tags")
     parts = output.decode("utf-8", errors="replace").split("\0")[1:]
     for index in range(0, len(parts) - 3, 4):
@@ -505,11 +765,11 @@ def scan_tags(scanner: Scanner, root: Path) -> None:
             scanner.scan_text(value, f"{label} {field_name}")
 
 
-def reachable_objects(root: Path) -> dict[str, str]:
-    """Object id to one path, for every object reachable from any ref (trees included)."""
-    listing = run_git(root, "rev-list", "--objects", "--all").decode("utf-8", errors="replace")
+def reachable_objects(root: Path, revisions: Sequence[str]) -> dict[str, str]:
+    """Object id to one path, for every object reachable from ``revisions`` (trees included)."""
+    listing = run_git(root, "rev-list", "--objects", *revisions)
     objects: dict[str, str] = {}
-    for line in listing.splitlines():
+    for line in listing.decode("utf-8", errors="replace").splitlines():
         sha, _, name = line.partition(" ")
         if name:
             objects.setdefault(sha, name)
@@ -539,12 +799,21 @@ def read_objects(root: Path, shas: Sequence[str]) -> Iterator[tuple[str, str, by
         offset = start + int(size) + 1
 
 
-def scan_blobs(scanner: Scanner, root: Path, shown_as_text: set[str]) -> None:
+def introducing_commit(root: Path, blob: str, revisions: Sequence[str]) -> str | None:
+    """The oldest commit in ``revisions`` that adds or changes a path to ``blob``."""
+    output = run_git(root, "log", *revisions, "--reverse", "--format=%H", f"--find-object={blob}")
+    lines = output.decode().split()
+    return lines[0] if lines else None
+
+
+def scan_blobs(
+    scanner: Scanner, root: Path, revisions: Sequence[str], shown_as_text: set[str]
+) -> None:
     """Every reachable blob the text diff did not show: binaries, UTF-16, diff attributes.
 
     Images are always checked for metadata, whether or not the diff showed them.
     """
-    objects = reachable_objects(root)
+    objects = reachable_objects(root, revisions)
     wanted = sorted(
         sha
         for sha, name in objects.items()
@@ -555,11 +824,13 @@ def scan_blobs(scanner: Scanner, root: Path, shown_as_text: set[str]) -> None:
             continue
         name = objects[sha]
         label = f"history blob {scanner.safe_label(name)}"
+        commit = introducing_commit(root, sha, revisions)
         if sha in shown_as_text:
-            scanner.scan_image(content, label)
+            fingerprint = (commit, "image-metadata", 0, name) if commit else None
+            scanner.scan_image(content, label, fingerprint)
         else:
-            scanner.scan_path(name, label)
-            scanner.scan_file_bytes(content, name, label)
+            scanner.scan_path(name, label, commit)
+            scanner.scan_file_bytes(content, name, label, commit)
 
 
 # ---------------------------------------------------------------- pull request text
@@ -653,6 +924,26 @@ def display_name(path: Path, root: Path) -> str:
         return path.name
 
 
+def emit_baseline(scanner: Scanner, root: Path, cutoff: str) -> list[str]:
+    """Baseline candidates: generic history hits at or before ``cutoff``, fingerprints only.
+
+    A location that also has a private list hit, or whose path would itself leak, is never a
+    candidate. Every candidate still needs a person to confirm it is a false positive.
+    """
+    full = run_git(root, "rev-parse", "--verify", f"{cutoff}^{{commit}}").decode().strip()
+    scanner.baseline = None
+    scan_commits(scanner, root, [full])
+    private = {hit.location for hit in scanner.hits if hit.rule == "denylist"}
+    lines = {
+        f"{commit} {rule} {line} {path}"
+        for hit in scanner.hits
+        if hit.fingerprint is not None and hit.location not in private
+        for commit, rule, line, path in [hit.fingerprint]
+        if scanner.safe_label(path) == path or path in FIELD_PATHS
+    }
+    return [f"cutoff {full}", *sorted(lines)]
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="leak_guard",
@@ -660,20 +951,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--tree", action="store_true", help="scan the working tree")
     parser.add_argument("--history", action="store_true", help="scan every reachable commit")
+    parser.add_argument("--range", metavar="A..B", help="scan only the commits in A..B")
     parser.add_argument("--text", action="append", type=Path, default=[], metavar="FILE")
     parser.add_argument("--pr", action="store_true", help="scan the current pull request text")
     parser.add_argument("--all", action="store_true", help="same as --tree --history")
     parser.add_argument("--root", type=Path, help="repository root (default: from git)")
+    parser.add_argument("--emit-baseline", metavar="CUTOFF", help="print baseline candidates")
+    parser.add_argument("--strip-png", nargs="+", type=Path, metavar="FILE", default=[])
     return parser
 
 
 def run(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     root = (args.root or find_root(Path.cwd())).resolve()
+    if args.strip_png:
+        for path in args.strip_png:
+            cleaned, removed = strip_png(path.read_bytes())
+            path.write_bytes(cleaned)
+            print(f"stripped {display_name(path, root)}: {removed} metadata chunk(s) removed")
+        return 0
     tree = args.tree or args.all
     history = args.history or args.all
-    if not (tree or history or args.text or args.pr):
-        raise GuardSetupError("choose at least one scope: --tree, --history, --text, --pr, --all")
+    if not (tree or history or args.range or args.text or args.pr or args.emit_baseline):
+        raise GuardSetupError(
+            "choose at least one scope: --tree, --history, --range, --text, --pr, --all"
+        )
 
+    in_ci = env.get("CI", "").lower() == "true"
     denylist, source = load_denylist(env, root)
     if denylist is None:
         print(
@@ -681,7 +984,7 @@ def run(args: argparse.Namespace, env: Mapping[str, str]) -> int:
             "private planning file). Private identifiers are NOT being checked.",
             file=sys.stderr,
         )
-        if env.get("CI", "").lower() == "true":
+        if in_ci:
             print("error: a denylist is required in CI", file=sys.stderr)
             return 2
     allow_path = root / ALLOW_FILE
@@ -690,7 +993,17 @@ def run(args: argparse.Namespace, env: Mapping[str, str]) -> int:
         if allow_path.is_file()
         else Allowlist()
     )
-    scanner = Scanner(denylist=denylist, allowlist=allowlist)
+    baseline: Baseline | None = None
+    baseline_path = root / BASELINE_FILE
+    if baseline_path.is_file() and (history or args.range):
+        baseline = Baseline.parse(baseline_path.read_text(encoding="utf-8"), denylist)
+        baseline.verify(root)
+    scanner = Scanner(denylist=denylist, allowlist=allowlist, baseline=baseline)
+
+    if args.emit_baseline:
+        for line in emit_baseline(scanner, root, args.emit_baseline):
+            print(line)
+        return 0
 
     scopes: list[str] = []
     if tree:
@@ -699,6 +1012,11 @@ def run(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     if history:
         scopes.append("history")
         scan_history(scanner, root)
+    if args.range:
+        scopes.append("range")
+        if ".." not in args.range or args.range.startswith("-"):
+            raise GuardSetupError("--range takes A..B")
+        scan_commits(scanner, root, [args.range])
     for path in args.text:
         scopes.append("text")
         if not path.is_file():
@@ -712,9 +1030,10 @@ def run(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     for notice in scanner.notices:
         print(f"notice: {notice}")
     for hit in scanner.hits:
-        print(hit.render())
+        print(hit.render(show_match=not in_ci))
     entries = "no denylist" if denylist is None else f"denylist {len(denylist.entries)} entries"
-    summary = f"({', '.join(dict.fromkeys(scopes))}; {entries} from {source})"
+    baselined = f"; {scanner.baselined} baselined" if baseline is not None else ""
+    summary = f"({', '.join(dict.fromkeys(scopes))}; {entries} from {source}{baselined})"
     if scanner.hits:
         print(f"leak guard: {len(scanner.hits)} hit(s) {summary}", file=sys.stderr)
         return 1
