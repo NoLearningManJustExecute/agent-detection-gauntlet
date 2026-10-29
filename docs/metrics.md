@@ -161,7 +161,7 @@ The report is one JSON object:
 
 | Field | Contents |
 | --- | --- |
-| `schema_version` | `"0.1"` |
+| `schema_version` | `"0.2"` (`"0.1"` is still read) |
 | `split` | The split scored: `heldout` or `dev`. |
 | `provenance.package_version` | Version of the installed package. |
 | `provenance.git_commit` | Commit of the git checkout the package runs from, or `null`. |

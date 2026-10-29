@@ -69,7 +69,7 @@ def test_full_path_from_traces_to_metrics(
     assert {json.loads(line)["rule_id"] for line in lines} == {"ADG-0001"}
     report = json.loads(metrics)
     assert report["split"] == "heldout"
-    assert report["schema_version"] == "0.1"
+    assert report["schema_version"] == "0.2"
     assert [rule["id"] for rule in report["rules"]] == ["ADG-0001"]
     roles = {item["role"] for item in report["inputs"]}
     assert roles == {"rule", "trace", "detections", "labels"}

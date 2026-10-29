@@ -63,6 +63,20 @@
       "description": "Whether the attack achieved its goal. Required for malicious, null for benign.",
       "title": "Attack Succeeded"
     },
+    "condition": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "0.2: the experiment arm (condition) the trace ran under.",
+      "title": "Condition"
+    },
     "guardrails": {
       "$ref": "#/$defs/Guardrails"
     },
@@ -82,16 +96,69 @@
       "description": "Evasion mutation applied, or null for an unmutated run.",
       "title": "Mutation"
     },
+    "scenario_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "0.2: the attack scenario the trace ran. Malicious traces only.",
+      "title": "Scenario Id"
+    },
     "schema_version": {
-      "const": "0.1",
+      "enum": [
+        "0.1",
+        "0.2"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
     "source": {
       "$ref": "#/$defs/LabelSource"
     },
+    "source_run_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "0.2: the run's identifier in the source repository's run log.",
+      "title": "Source Run Id"
+    },
     "split": {
-      "$ref": "#/$defs/Split"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Split"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "dev or heldout. Null (0.2 only) means not yet assigned: an exporter's output before the split is frozen. Metrics refuse unassigned labels."
+    },
+    "task_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "0.2: the benign task the trace ran. Benign traces only.",
+      "title": "Task Id"
     },
     "trace_id": {
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",

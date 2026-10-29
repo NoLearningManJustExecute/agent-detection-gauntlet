@@ -5,6 +5,19 @@ traces, labels and detections. The models live in `src/agent_detection_gauntlet/
 Generated JSON Schemas for every format are committed under `schemas/` (see
 [JSON Schemas](#json-schemas)).
 
+## Schema versions
+
+The current version is **0.2**. Every reader accepts `"0.1"` and `"0.2"`, so files written under
+0.1 stay readable. Writers emit `"0.2"`.
+
+| Version | Changes |
+| --- | --- |
+| 0.1 | First release. |
+| 0.2 | Labels: optional `scenario_id`, `task_id`, `condition`, `source_run_id`; `split` may be `null` (not yet assigned). Traces: `adg.guardrail.name` and `adg.guardrail.stage` on `guardrail.action`. Detections and the metrics report change only their version string. |
+
+A 0.1 record that uses a 0.2 field or attribute is rejected, even when the field is `null`, so
+the meaning of a 0.1 file never changes. All events of one trace must share one version.
+
 ## OpenTelemetry GenAI conventions: pinned version
 
 Attribute names follow the OpenTelemetry GenAI semantic conventions wherever a name exists.
@@ -33,7 +46,7 @@ Every field is required. Unknown top-level keys are rejected and no type coercio
 
 | Field | Type | Rules |
 | --- | --- | --- |
-| `schema_version` | string | Must be `"0.1"`. |
+| `schema_version` | string | `"0.1"` or `"0.2"`. |
 | `trace_id` | string | Identifier: `^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$`. |
 | `span_id` | string | Identifier, same pattern. Unique within the trace. |
 | `parent_span_id` | string or null | Required key. `null` for a root event, otherwise an identifier of another span in the same trace. Must not equal `span_id`. |
@@ -93,6 +106,8 @@ silently ignored.
 | `adg.content.ref` | content-bearing events | Non-empty list without repeats of span ids (identifier pattern). Each names an earlier event in the same trace whose content this event's content derives from. Must not contain the event's own `span_id`. |
 | `adg.content.text` | content-bearing events | String. The text content of the event. |
 | `adg.guardrail.decision` | `guardrail.action` only | One of `allow`, `block`, `redact`, `flag`. |
+| `adg.guardrail.name` | `guardrail.action` only (0.2) | Identifier of the control that decided, for example `tool_permissions`. |
+| `adg.guardrail.stage` | `guardrail.action` only (0.2) | What was evaluated: `user_prompt`, `retrieval`, `tool_definition`, `tool_call`, `tool_result` or `llm_response`. |
 
 The first four are the provenance attributes. Placing any of them on a non-content-bearing
 event (`session.start`, `guardrail.action`, `session.end`) is an error.
@@ -155,22 +170,30 @@ keys, no `NaN`, errors reported as `path:line`).
 
 | Field | Type | Rules |
 | --- | --- | --- |
-| `schema_version` | string | Must be `"0.1"`. |
+| `schema_version` | string | `"0.1"` or `"0.2"`. |
 | `trace_id` | string | Identifier pattern. |
 | `label` | string | `malicious` or `benign`. |
 | `attack_class` | string or null | Non-blank string for malicious, `null` for benign. |
 | `attack_succeeded` | bool or null | `true` or `false` for malicious, `null` for benign. Must be a JSON boolean. |
 | `mutation` | string or null | The evasion mutation applied, or `null` for an unmutated run. Non-blank when present. Must be `null` for benign. |
 | `guardrails` | string | `on` or `off`. |
-| `split` | string | `dev` or `heldout`. |
+| `split` | string or null | `dev` or `heldout`. In 0.2, `null` means not yet assigned (an exporter's output before the split is frozen). |
 | `source` | string | Where the trace came from: `synthetic`, `rag-attack-lab` or `agent-risk-framework`. |
+| `scenario_id` | string or null | 0.2, optional. The attack scenario the trace ran. Malicious only. |
+| `task_id` | string or null | 0.2, optional. The benign task the trace ran. Benign only. |
+| `condition` | string or null | 0.2, optional. The experiment arm, for example `baseline` or `combined`. |
+| `source_run_id` | string or null | 0.2, optional. The run's identifier in the source repository's run log. |
 
-All keys are required, including those whose value is `null`. Unknown keys are rejected.
+The keys up to `source` are required, including those whose value is `null`. The 0.2 keys may
+be omitted. Unknown keys are rejected.
 
 Consistency rules:
 
 - A `malicious` label needs a non-null `attack_class` and a non-null `attack_succeeded`.
 - A `benign` label must have `attack_class`, `attack_succeeded` and `mutation` all `null`.
+- A 0.1 label must have a `split` and must not carry any 0.2 key.
+- `scenario_id` is allowed only on malicious labels, `task_id` only on benign labels.
+- `gauntlet metrics` refuses any label whose `split` is `null`: scoring needs a frozen split.
 - A trace may be labeled only once across all labels input. A second label for the same
   `trace_id` is an error that names the first location.
 
@@ -182,7 +205,7 @@ How `metrics` maps labels to outcome buckets is described in [metrics.md](metric
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `schema_version` | string | `"0.1"`. |
+| `schema_version` | string | `"0.2"` (`"0.1"` is still read). |
 | `rule_id` | string | Rule id, `ADG-` followed by four digits. |
 | `rule_version` | string | Rule version (semantic version). |
 | `trace_id` | string | Trace the hit is in. |
@@ -216,4 +239,5 @@ file is missing, out of date, or not one of the expected files.
 The JSON Schemas describe the shape of a single record. Several rules are enforced only by the
 reader: the `adg.*` attribute checks, the string type of GenAI attributes, the label consistency
 rules, and all cross-event rules (unique span ids, parent existence, content reference order).
-Use `gauntlet validate-traces` for a full check.
+The version rules (0.1 records rejecting 0.2 keys) and the malicious and benign label rules are
+also reader-only. Use `gauntlet validate-traces` for a full check.

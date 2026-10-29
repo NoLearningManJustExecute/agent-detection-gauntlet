@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -10,6 +10,7 @@ from agent_detection_gauntlet.schema.common import (
     STRICT_MODEL,
     Identifier,
     RuleId,
+    SchemaVersion,
     SemVer,
     Severity,
     Tier,
@@ -22,7 +23,7 @@ class Detection(BaseModel):
 
     model_config = STRICT_MODEL
 
-    schema_version: Literal["0.1"]
+    schema_version: SchemaVersion
     rule_id: RuleId
     rule_version: SemVer
     trace_id: Identifier
