@@ -1,0 +1,604 @@
+"""Leak guard tests.
+
+Every sample that a rule should catch is assembled from pieces at run time, so this file never
+trips the guard itself when the repository is scanned.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from tools import leak_guard
+from tools.leak_guard import (
+    Allowlist,
+    Denylist,
+    GuardSetupError,
+    Scanner,
+    display_name,
+    email_allowed,
+    mask,
+    parse_patch,
+)
+
+SALT = "a1b2c3"
+SECRET_WORD = "zorb" + "latt"  # stands in for a private identifier
+SECRET_PAIR = "quill" + " " + "marrow"
+AT = "@"
+BACKSLASH = chr(92)
+
+
+def digest(identifier: str) -> str:
+    return hashlib.sha256(f"{SALT}\n{identifier}".encode()).hexdigest()
+
+
+DENYLIST_TEXT = (
+    "# test denylist\n"
+    f"salt {SALT}\n"
+    "maxwords 3\n"
+    f"hash {digest(SECRET_WORD)}\n"
+    f"hash {digest(SECRET_PAIR)}\n"
+)
+
+
+def denylist() -> Denylist:
+    return Denylist.parse(DENYLIST_TEXT)
+
+
+def rules_hit(text: str, origin: str | None = None, deny: Denylist | None = None) -> list[str]:
+    scanner = Scanner(denylist=deny)
+    scanner.scan_text(text, "sample", origin=origin)
+    return [hit.rule for hit in scanner.hits]
+
+
+def run_guard(
+    args: list[str], env: dict[str, str] | None = None, capsys: Any = None
+) -> tuple[int, str]:
+    code = leak_guard.main(args, env or {})
+    output = ""
+    if capsys is not None:
+        captured = capsys.readouterr()
+        output = captured.out + captured.err
+    return code, output
+
+
+# ---------------------------------------------------------------- generic patterns
+
+
+@pytest.mark.parametrize(
+    ("text", "rule"),
+    [
+        ("C" + ":" + BACKSLASH + "Users" + BACKSLASH + "x", "windows-path"),
+        ("open d" + ":/data/file.txt", "windows-path"),
+        (BACKSLASH * 2 + "fileserver" + BACKSLASH + "share", "unc-path"),
+        ("/" + "Users/alex/project", "macos-home-path"),
+        ("cd /c/" + "Users/alex", "macos-home-path"),
+        ("/" + "home/alex/project", "linux-home-path"),
+        ("%" + "userprofile" + "%" + BACKSLASH + "x", "userprofile-variable"),
+        ("~" + "/projects", "home-tilde-path"),
+        ("~" + BACKSLASH + "projects", "home-tilde-path"),
+        ("alex" + AT + "gmail.com", "email-address"),
+        ("someone" + AT + "github.com", "email-address"),
+        ("x" + AT + "example.co", "email-address"),
+        ("x" + AT + "mail.example.net", "email-address"),
+        ("see " + "anthropic" + ".com", "forbidden-domain"),
+        ("Claude" + ".AI/x", "forbidden-domain"),
+        ("Generated" + "  with a tool", "generated-footer"),
+        ("session" + "_" + "a" * 24, "session-id"),
+        ("a " + chr(0x2014) + " b", "dash-character"),
+        ("2" + chr(0x2013) + "3", "dash-character"),
+        ("-" * 5 + "BEGIN OPENSSH " + "PRIVATE KEY" + "-" * 5, "private-key"),
+        ("-" * 5 + "BEGIN " + "PRIVATE KEY" + "-" * 5, "private-key"),
+        ("ghp" + "_" + "A1" * 18, "github-token"),
+        ("gho" + "_" + "b2" * 18, "github-token"),
+        ("github" + "_pat_" + "C3" * 15, "github-token"),
+        ("sk" + "-" + "proj_" + "x" * 30, "api-key"),
+        ("xox" + "b-" + "1234567890-abc", "slack-token"),
+        ("xox" + "p-" + "1234567890-abc", "slack-token"),
+        ("AKIA" + "ABCDEFGH12345678", "aws-access-key"),
+    ],
+)
+def test_generic_rule_catches(text: str, rule: str) -> None:
+    assert rule in rules_hit(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "https" + "://example.org/page",
+        "file" + ":///etc/hosts",
+        "error" + ":" + BACKSLASH + "n",
+        "release notes for v1.0",
+        "317904428+Name" + AT + "users.noreply.github.com",
+        "noreply" + AT + "github.com",
+        "support" + AT + "github.com",
+        "x" + AT + "noreply.github.com",
+        "dana" + AT + "example.com",
+        "jordan" + AT + "example.net",
+        "riley" + AT + "example.org",
+        "a" + AT + "host.example",
+        "a" + AT + "host.test",
+        "a" + AT + "host.invalid",
+        "@field_validator decorators and actions/checkout" + AT + "3d3c42e5",
+        "task" + "-" + "x" * 30,
+        "AKIA" + "ABCDEFGH123456789",
+        "session" + "_" + "short",
+        "a - b, plain hyphen",
+        "regex [A-Za-z]" + ":" + "[x]",
+    ],
+)
+def test_generic_rules_ignore_safe_text(text: str) -> None:
+    assert rules_hit(text) == []
+
+
+def test_runner_home_is_allowed_only_in_workflows() -> None:
+    sample = "cd /" + "home/runner/work"
+    assert rules_hit(sample, origin=".github/workflows/ci.yml") == []
+    assert rules_hit(sample, origin="docs/notes.md") == ["linux-home-path"]
+    other = "/" + "home/alex"
+    assert rules_hit(other, origin=".github/workflows/ci.yml") == ["linux-home-path"]
+
+
+def test_email_allowlist_rules() -> None:
+    assert email_allowed("Noreply" + AT + "GitHub.com")
+    assert not email_allowed("billing" + AT + "github.com")
+    assert not email_allowed("a" + AT + "example.com.evil.org")
+
+
+def test_mask_hides_the_middle() -> None:
+    assert mask("abc") == "***"
+    secret = "C" + ":/" + "Users/someone/Desktop"
+    assert mask(secret) == "C:****op"
+    assert "someone" not in mask(secret)
+
+
+def test_generic_hit_reports_line_and_masked_match() -> None:
+    scanner = Scanner(denylist=None)
+    scanner.scan_text("ok\nmail " + "alex" + AT + "gmail.com\n", "notes.md")
+    [hit] = scanner.hits
+    assert hit.render() == "notes.md:2: email-address: al****om"
+
+
+# ---------------------------------------------------------------- denylist
+
+
+def test_denylist_blocks_and_never_prints_the_identifier(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sample = tmp_path / "body.md"
+    sample.write_text(f"Thanks, {SECRET_WORD.title()}!\nsecond line\n", encoding="utf-8")
+    code, output = run_guard(
+        ["--root", str(tmp_path), "--text", str(sample)],
+        {"LEAK_DENYLIST": DENYLIST_TEXT},
+        capsys,
+    )
+    assert code == 1
+    assert "body.md:1: denylist: private identifier (hash #1)" in output
+    assert SECRET_WORD not in output.lower()
+
+
+def test_denylist_matches_whole_word_windows_only() -> None:
+    deny = denylist()
+    assert list(deny.matches(f"a {SECRET_WORD} b")) == [(1, 1)]
+    assert list(deny.matches(f"{SECRET_WORD}y and pre{SECRET_WORD}")) == []
+    assert list(deny.matches("Quill   MARROW")) == [(1, 2)]
+    assert list(deny.matches("quill\nmarrow wrapped")) == [(1, 2)]
+    assert list(deny.matches("quill and marrow")) == []
+    assert list(deny.matches(f"path/to/{SECRET_WORD}/file")) == [(1, 1)]
+    assert list(deny.matches(f'"{SECRET_WORD}",')) == [(1, 1)]
+    assert list(deny.matches(f"x\ny\n({SECRET_WORD}) {SECRET_WORD}")) == [(3, 1)]
+
+
+def test_denylist_digest_follows_the_documented_formula() -> None:
+    deny = denylist()
+    assert deny.digest(f"  {SECRET_WORD.upper()} ") == digest(SECRET_WORD)
+    assert deny.max_words == 3
+    assert deny.entries[digest(SECRET_PAIR)] == 2
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("maxwords 2\nhash " + "0" * 64, "exactly one salt"),
+        ("salt ab\nhash " + "0" * 64, "exactly one salt"),
+        ("salt ab\nmaxwords 2\n", "no hash lines"),
+        ("salt ab\nsalt cd\nmaxwords 2", "line 2 is not a valid entry"),
+        ("salt ab\nmaxwords 0", "line 2 is not a valid entry"),
+        ("salt ab\nmaxwords 2\nplain private text", "line 3 is not a valid entry"),
+        ("salt zz\nmaxwords 2", "line 1 is not a valid entry"),
+    ],
+)
+def test_denylist_parse_errors_do_not_echo_content(text: str, message: str) -> None:
+    with pytest.raises(GuardSetupError, match=message) as caught:
+        Denylist.parse(text)
+    assert "private" not in str(caught.value)
+
+
+def test_denylist_sources(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    sample = repo / "a.txt"
+    sample.write_text(SECRET_WORD + "\n", encoding="utf-8")
+    args = ["--root", str(repo), "--text", str(sample)]
+
+    named = tmp_path / "named.hashes"
+    named.write_text(DENYLIST_TEXT, encoding="utf-8")
+    code, output = run_guard(args, {"LEAK_DENYLIST_FILE": str(named)}, capsys)
+    assert (code, "from LEAK_DENYLIST_FILE" in output) == (1, True)
+
+    code, output = run_guard(args, {"LEAK_DENYLIST_FILE": str(tmp_path / "nope")}, capsys)
+    assert code == 2
+    assert "does not name a readable file" in output
+
+    planning = tmp_path / "_planning"
+    planning.mkdir()
+    (planning / "private-denylist.hashes").write_text(DENYLIST_TEXT, encoding="utf-8")
+    code, output = run_guard(args, {"LEAK_DENYLIST": "  "}, capsys)
+    assert (code, "from private planning file" in output) == (1, True)
+
+
+def test_missing_denylist_warns_locally_and_fails_in_ci(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sample = tmp_path / "a.txt"
+    sample.write_text("clean\n", encoding="utf-8")
+    args = ["--root", str(tmp_path), "--text", str(sample)]
+    code, output = run_guard(args, {}, capsys)
+    assert code == 0
+    assert "WARNING: no private denylist" in output
+    code, output = run_guard(args, {"CI": "true"}, capsys)
+    assert code == 2
+    assert "a denylist is required in CI" in output
+
+
+def test_generic_match_holding_a_private_identifier_is_fully_masked() -> None:
+    scanner = Scanner(denylist=denylist())
+    scanner.scan_text("C" + ":/" + "Users/" + SECRET_WORD + "/x", "a.md")
+    shown = {hit.rule: hit.shown for hit in scanner.hits}
+    assert shown["windows-path"] == "****"
+    assert shown["denylist"] == "private identifier (hash #1)"
+
+
+# ---------------------------------------------------------------- allowlist
+
+
+def test_allowlist_accepts_exact_match_or_exact_line() -> None:
+    path = "/" + "home/alex"
+    allow = Allowlist.parse(f"# comment\n\n{path} # reason: documented example\n", None)
+    scanner = Scanner(denylist=None, allowlist=allow)
+    scanner.scan_text(f"see {path}\nsee {path}/more\n", "a.md")
+    assert [hit.location for hit in scanner.hits] == ["a.md:2"]
+
+    line = "x = 'C" + ":/" + "data'"
+    allow = Allowlist.parse(f"{line} # reason: detector pattern definition\n", None)
+    scanner = Scanner(denylist=None, allowlist=allow)
+    scanner.scan_text(f"  {line}  \ny = 'C" + ":/" + "data'\n", "a.py")
+    assert [hit.location for hit in scanner.hits] == ["a.py:2"]
+
+
+def test_allowlist_file_does_not_flag_its_own_entries() -> None:
+    path = "/" + "home/alex"
+    text = f"{path} # reason: documented example\n"
+    allow = Allowlist.parse(text, None)
+    scanner = Scanner(denylist=None, allowlist=allow)
+    scanner.scan_text(text, leak_guard.ALLOW_FILE, origin=leak_guard.ALLOW_FILE)
+    assert scanner.hits == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["no reason here", "value #", "value # ", "value #reason"],
+)
+def test_allowlist_requires_a_reason(line: str) -> None:
+    with pytest.raises(GuardSetupError, match="line 1"):
+        Allowlist.parse(line, None)
+
+
+def test_allowlist_can_never_hold_a_private_identifier(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(GuardSetupError, match=r"hash #1"):
+        Allowlist.parse(f"{SECRET_WORD} # reason: test\n", denylist())
+    with pytest.raises(GuardSetupError, match=r"hash #2"):
+        Allowlist.parse("x # reason: about Quill Marrow\n", denylist())
+
+    (tmp_path / leak_guard.ALLOW_FILE).write_text(f"{SECRET_WORD} # reason: x\n", "utf-8")
+    sample = tmp_path / "a.txt"
+    sample.write_text("clean\n", encoding="utf-8")
+    code, output = run_guard(
+        ["--root", str(tmp_path), "--text", str(sample)], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 2
+    assert SECRET_WORD not in output
+
+
+def test_allowlist_never_neutralizes_a_denylist_hit() -> None:
+    # Built directly, bypassing the parser's own refusal, to show the scanner ignores it too.
+    line = f"note about {SECRET_WORD}"
+    scanner = Scanner(denylist=denylist(), allowlist=Allowlist(frozenset({line, SECRET_WORD})))
+    scanner.scan_text(line, "a.md")
+    assert [hit.rule for hit in scanner.hits] == ["denylist"]
+
+
+# ---------------------------------------------------------------- tree, history, images
+
+
+def git(repo: Path, *args: str) -> None:
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=ci" + AT + "example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.autocrlf=false",
+            *args,
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q")
+    return root
+
+
+PNG_HEADER = bytes([0x89]) + b"PNG\r\n\x1a\n"
+
+
+def test_tree_scan(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (repo / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+    (repo / "clean.md").write_text("nothing to see\n", encoding="utf-8")
+    (repo / "ignored.txt").write_text("alex" + AT + "gmail.com\n", encoding="utf-8")
+    (repo / "untracked.md").write_text("contact alex" + AT + "gmail.com\n", encoding="utf-8")
+    (repo / "plain.png").write_bytes(PNG_HEADER + b"\0\0IDAT")
+    (repo / "photo.jpg").write_bytes(b"\xff\xd8\xff\xe1\0\x10Exif\0\0rest")
+    (repo / "icon.svg").write_text("<svg><x:xmpmeta/></svg>\n", encoding="utf-8")
+    (repo / "blob.bin").write_bytes(b"\0\x01" + ("alex" + AT + "gmail.com").encode())
+    (repo / f"{SECRET_WORD}.md").write_text("fine\n", encoding="utf-8")
+    git(repo, "add", "clean.md", ".gitignore", "plain.png", "photo.jpg", "icon.svg")
+    git(repo, "add", "blob.bin", f"{SECRET_WORD}.md")
+    git(repo, "commit", "-q", "-m", "init")
+    (repo / "clean.md").unlink()
+
+    code, output = run_guard(
+        ["--root", str(repo), "--tree"], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 1
+    assert "untracked.md:1: email-address" in output
+    assert "ignored.txt" not in output
+    assert "blob.bin" not in output
+    assert "notice: plain.png: image, needs manual review" in output
+    assert "plain.png: image-metadata" not in output
+    assert "photo.jpg: image-metadata: EXIF or XMP metadata present" in output
+    assert "icon.svg: image-metadata" in output
+    assert "(file name):1: denylist: private identifier (hash #1)" in output
+    assert "hit(s) (tree; denylist 2 entries from LEAK_DENYLIST)" in output
+
+
+def test_history_scan(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (repo / "a.md").write_text("one\ntwo\n", encoding="utf-8")
+    git(repo, "add", "a.md")
+    git(repo, "commit", "-q", "-m", "first")
+    (repo / "a.md").write_text("one\ntwo\nthree " + "alex" + AT + "gmail.com\n", "utf-8")
+    (repo / "pic.png").write_bytes(PNG_HEADER + b"eXIf data")
+    git(repo, "add", "a.md", "pic.png")
+    git(repo, "commit", "-q", "-m", f"second\n\nthanks {SECRET_WORD}")
+    git(repo, "rm", "-q", "a.md")
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Alex",
+            "-c",
+            "user.email=alex" + AT + "gmail.com",
+            "commit",
+            "-q",
+            "-m",
+            "third",
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+
+    code, output = run_guard(
+        ["--root", str(repo), "--history"], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 1
+    lines = output.splitlines()
+    assert any(line.endswith(" a.md:3: email-address: al****om") for line in lines)
+    assert any(" message:3: denylist: private identifier (hash #1)" in line for line in lines)
+    assert any(" author email:1: email-address" in line for line in lines)
+    assert any(" committer email:1: email-address" in line for line in lines)
+    assert any("history blob pic.png: image-metadata" in line for line in lines)
+    assert SECRET_WORD not in output
+
+
+def test_all_scope_runs_tree_and_history(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (repo / "a.md").write_text("fine\n", encoding="utf-8")
+    git(repo, "add", "a.md")
+    git(repo, "commit", "-q", "-m", "clean")
+    code, output = run_guard(
+        ["--root", str(repo), "--all"], {"LEAK_DENYLIST": DENYLIST_TEXT}, capsys
+    )
+    assert code == 0
+    assert "leak guard: clean (tree, history; denylist 2 entries from LEAK_DENYLIST)" in output
+
+
+def test_parse_patch_tracks_new_file_line_numbers() -> None:
+    patch = "\n".join(
+        [
+            "diff --git a/x.md b/x.md",
+            "--- a/x.md",
+            "+++ b/x.md",
+            "@@ -1,0 +5,2 @@",
+            "+five",
+            "+six",
+            " seven",
+            "-gone",
+            "+eight",
+            "diff --git a/old.md b/old.md",
+            "--- a/old.md",
+            "+++ /dev/null",
+            "@@ -1 +0,0 @@",
+            "-removed",
+            "diff --git a/q b/q",
+            '+++ "b/sp ace.md"',
+            "@@ -0,0 +1 @@",
+            "+new",
+        ]
+    )
+    files = parse_patch(patch)
+    assert [(f.path, f.lines, f.numbers) for f in files] == [
+        ("x.md", ["five", "six", "eight"], [5, 6, 8]),
+        ("sp ace.md", ["new"], [1]),
+    ]
+
+
+# ---------------------------------------------------------------- pull request text
+
+
+def event_file(tmp_path: Path, payload: dict[str, Any]) -> str:
+    path = tmp_path / "event.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return str(path)
+
+
+def test_pr_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls: list[str] = []
+    many = [{"id": index, "body": "fine"} for index in range(100)]
+
+    def fake_get(url: str, token: str) -> Any:
+        calls.append(url)
+        assert token == "t0ken"
+        if url.endswith("/pulls/7"):
+            return {"title": "Phase work", "body": "mail " + "alex" + AT + "gmail.com"}
+        if "/issues/7/comments" in url:
+            return many if url.endswith("page=1") else [{"id": 900, "body": SECRET_WORD}]
+        if "/reviews" in url:
+            return [{"id": 5, "body": None}]
+        return [{"id": 6, "body": "C" + ":" + BACKSLASH + "x"}]
+
+    monkeypatch.setattr(leak_guard, "http_get_json", fake_get)
+    env = {
+        "GITHUB_TOKEN": "t0ken",
+        "GITHUB_REPOSITORY": "owner/repo",
+        "GITHUB_EVENT_PATH": event_file(tmp_path, {"pull_request": {"number": 7}}),
+        "GITHUB_API_URL": "https://api.example.com",
+        "LEAK_DENYLIST": DENYLIST_TEXT,
+    }
+    code, output = run_guard(["--root", str(tmp_path), "--pr"], env, capsys)
+    assert code == 1
+    assert "pr body:1: email-address" in output
+    assert "pr review comment 6:1: windows-path" in output
+    assert "pr comment 900:1: denylist: private identifier (hash #1)" in output
+    assert SECRET_WORD not in output
+    assert calls[0] == "https://api.example.com/repos/owner/repo/pulls/7"
+    assert sum("/issues/7/comments" in url for url in calls) == 2
+
+
+def test_pr_scan_setup_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = {"LEAK_DENYLIST": DENYLIST_TEXT}
+    args = ["--root", str(tmp_path), "--pr"]
+    code, output = run_guard(args, base, capsys)
+    assert (code, "needs GITHUB_TOKEN" in output) == (2, True)
+
+    env = {
+        **base,
+        "GITHUB_TOKEN": "t",
+        "GITHUB_REPOSITORY": "o/r",
+        "GITHUB_EVENT_PATH": event_file(tmp_path, {"push": {}}),
+    }
+    code, output = run_guard(args, env, capsys)
+    assert (code, "only on pull_request events" in output) == (2, True)
+
+    env["GITHUB_EVENT_PATH"] = event_file(tmp_path, {"pull_request": {"number": 1}})
+    monkeypatch.setattr(leak_guard, "http_get_json", lambda url, token: {"title": "t"})
+    code, output = run_guard(args, env, capsys)
+    assert (code, "unexpected response" in output) == (2, True)
+
+
+def test_http_get_json_sends_auth_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
+
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"ok": true}'
+
+    def fake_open(request: Any, timeout: float) -> Response:
+        seen["auth"] = request.get_header("Authorization")
+        seen["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    assert leak_guard.http_get_json("https://api.example.com/x", "abc") == {"ok": True}
+    assert seen == {"auth": "Bearer abc", "timeout": 30}
+
+
+# ---------------------------------------------------------------- setup and exit codes
+
+
+def test_usage_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    code, output = run_guard(["--root", str(tmp_path)], {}, capsys)
+    assert (code, "choose at least one scope" in output) == (2, True)
+    code, output = run_guard(
+        ["--root", str(tmp_path), "--text", str(tmp_path / "missing.md")], {}, capsys
+    )
+    assert (code, "--text file not found: missing.md" in output) == (2, True)
+
+
+def test_git_failure_and_os_errors_exit_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    code, output = run_guard(["--root", str(plain), "--history"], {}, capsys)
+    assert (code, "git log failed" in output) == (2, True)
+
+    def broken(*args: object) -> None:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(leak_guard, "scan_tree", broken)
+    code, output = run_guard(["--root", str(plain), "--tree"], {}, capsys)
+    assert (code, "error: Permission denied" in output) == (2, True)
+
+
+def test_find_root_and_display_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(*args: object) -> bytes:
+        raise GuardSetupError("not a repository")
+
+    monkeypatch.setattr(leak_guard, "run_git", fail)
+    assert leak_guard.find_root(tmp_path) == Path(leak_guard.__file__).resolve().parents[1]
+    assert display_name(tmp_path / "a" / "b.md", tmp_path) == "a/b.md"
+    assert display_name(tmp_path.parent / "c.md", tmp_path) == "c.md"
+
+
+def test_repository_is_clean_under_its_own_guard(capsys: pytest.CaptureFixture[str]) -> None:
+    # The private list is not available everywhere, so this checks generic rules on the tree.
+    code, output = run_guard(["--tree"], {}, capsys)
+    assert code == 0, output
