@@ -110,6 +110,11 @@ def check_inputs(inputs: ScoringInputs) -> None:
     unlabeled = sorted(traces - set(inputs.labels))
     if unlabeled:
         raise MetricsInputError(f"traces without a label: {unlabeled}")
+    unassigned = sorted(
+        trace_id for trace_id, label in inputs.labels.items() if label.split is None
+    )
+    if unassigned:
+        raise MetricsInputError(f"labels without a split (not frozen yet): {unassigned}")
     missing = sorted(
         trace_id
         for trace_id, label in inputs.labels.items()

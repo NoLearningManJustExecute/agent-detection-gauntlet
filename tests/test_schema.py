@@ -106,6 +106,9 @@ def test_parent_span_id_is_required_but_nullable() -> None:
         ("session.start", {"adg.source.trust": "trusted"}, "content-bearing"),
         ("guardrail.action", {"adg.guardrail.decision": "maybe"}, "must be one of"),
         ("tool.call", {"adg.guardrail.decision": "block"}, "only allowed on guardrail.action"),
+        ("tool.call", {"adg.guardrail.name": "egress"}, "only allowed on guardrail.action"),
+        ("guardrail.action", {"adg.guardrail.name": "bad name"}, "must be an identifier"),
+        ("guardrail.action", {"adg.guardrail.stage": "elsewhere"}, "must be one of"),
     ],
 )
 def test_attribute_validation(event_type: str, attributes: dict[str, Any], message: str) -> None:
@@ -205,3 +208,75 @@ def test_parent_cycle_is_reported() -> None:
     ]
     messages = [message for _, message in integrity_problems(events)]
     assert any("loops" in m for m in messages)
+
+
+def test_guardrail_name_and_stage_need_0_2() -> None:
+    attributes = {
+        "adg.guardrail.decision": "block",
+        "adg.guardrail.name": "tool_permissions",
+        "adg.guardrail.stage": "tool_call",
+    }
+    data = event_dict("s1", "guardrail.action", attributes)
+    data["schema_version"] = "0.2"
+    assert validate(data).attributes["adg.guardrail.stage"] == "tool_call"
+    data["schema_version"] = "0.1"
+    with pytest.raises(ValidationError, match=r"need schema_version 0.2"):
+        validate(data)
+
+
+def test_event_versions_accepted() -> None:
+    for version in ("0.1", "0.2"):
+        data = event_dict("s1", "session.start")
+        data["schema_version"] = version
+        assert validate(data).schema_version == version
+    data["schema_version"] = "0.3"
+    with pytest.raises(ValidationError, match="schema_version"):
+        validate(data)
+
+
+LABEL_0_2 = {
+    **LABEL,
+    "schema_version": "0.2",
+    "scenario_id": "AC01",
+    "condition": "baseline",
+    "source_run_id": "phase4-baseline:attack:AC01:0",
+}
+
+
+def test_label_0_2_optional_fields() -> None:
+    record = LabelRecord.model_validate_json(json.dumps(LABEL_0_2))
+    assert record.scenario_id == "AC01"
+    assert record.task_id is None
+    unassigned = LabelRecord.model_validate_json(json.dumps({**LABEL_0_2, "split": None}))
+    assert unassigned.split is None
+    benign = {
+        **LABEL_0_2,
+        "label": "benign",
+        "attack_class": None,
+        "attack_succeeded": None,
+        "scenario_id": None,
+        "task_id": "BT-001",
+    }
+    assert LabelRecord.model_validate_json(json.dumps(benign)).task_id == "BT-001"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"schema_version": "0.1"}, "need schema_version 0.2"),
+        ({"task_id": "BT-001"}, "must not carry a task_id"),
+        ({"scenario_id": ""}, "scenario_id"),
+        (
+            {"label": "benign", "attack_class": None, "attack_succeeded": None},
+            "must not carry a scenario_id",
+        ),
+    ],
+)
+def test_label_0_2_rules(overrides: dict[str, Any], message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        LabelRecord.model_validate_json(json.dumps({**LABEL_0_2, **overrides}))
+
+
+def test_label_0_1_needs_a_split() -> None:
+    with pytest.raises(ValidationError, match="split must be dev or heldout"):
+        LabelRecord.model_validate_json(json.dumps({**LABEL, "split": None}))

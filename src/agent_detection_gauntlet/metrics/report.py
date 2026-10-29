@@ -7,7 +7,13 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, Field, model_validator
 
-from agent_detection_gauntlet.schema.common import STRICT_MODEL, RuleId, SemVer, Tier
+from agent_detection_gauntlet.schema.common import (
+    STRICT_MODEL,
+    RuleId,
+    SchemaVersion,
+    SemVer,
+    Tier,
+)
 from agent_detection_gauntlet.schema.labels import Split
 
 Count = Annotated[int, Field(ge=0)]
@@ -155,7 +161,7 @@ class Provenance(BaseModel):
 class MetricsReport(BaseModel):
     model_config = STRICT_MODEL
 
-    schema_version: Literal["0.1"]
+    schema_version: SchemaVersion
     split: Split
     provenance: Provenance
     inputs: list[InputFile]

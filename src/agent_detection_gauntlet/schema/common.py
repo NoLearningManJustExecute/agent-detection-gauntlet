@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Annotated, Any, Final
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import (
     AfterValidator,
@@ -16,7 +16,11 @@ from pydantic import (
     WithJsonSchema,
 )
 
-SCHEMA_VERSION: Final = "0.1"
+# Version written by this package. Every reader also accepts the earlier versions listed in
+# SUPPORTED_SCHEMA_VERSIONS, so files written under 0.1 stay readable.
+SCHEMA_VERSION: Final = "0.2"
+SUPPORTED_SCHEMA_VERSIONS: Final = ("0.1", "0.2")
+SchemaVersion = Literal["0.1", "0.2"]
 
 # Every model is strict: no unknown keys, no type coercion, immutable after validation.
 STRICT_MODEL = ConfigDict(extra="forbid", strict=True, frozen=True)

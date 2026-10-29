@@ -215,6 +215,15 @@ def test_inputs_must_line_up(overrides: dict[str, Any], message: str) -> None:
         compute_metrics(inputs(**overrides))
 
 
+def test_unassigned_split_fails_closed() -> None:
+    unassigned = {**label("u1", "benign").model_dump(mode="json"), "schema_version": "0.2"}
+    unassigned["split"] = None
+    record = LabelRecord.model_validate_json(json.dumps(unassigned))
+    assert record.split is None
+    with pytest.raises(MetricsInputError, match=r"without a split \(not frozen yet\): \['u1'\]"):
+        compute_metrics(inputs(labels={**LABELS, "u1": record}, trace_ids=[*TRACES, "u1"]))
+
+
 def test_missing_dev_traces_are_allowed_when_scoring_heldout() -> None:
     population, _, _ = compute_metrics(
         inputs(trace_ids=[t for t in TRACES if t != "d1"], detections=DETECTIONS[:5])

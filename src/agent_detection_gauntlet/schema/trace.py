@@ -11,7 +11,6 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal
 
 from pydantic import BaseModel, Field, JsonValue, field_validator, model_validator
 
@@ -19,6 +18,7 @@ from agent_detection_gauntlet.schema.common import (
     IDENTIFIER_PATTERN,
     STRICT_MODEL,
     Identifier,
+    SchemaVersion,
     UtcTimestamp,
 )
 
@@ -65,12 +65,27 @@ ATTR_DATA_LABELS = "adg.data.labels"
 ATTR_CONTENT_REF = "adg.content.ref"
 ATTR_CONTENT_TEXT = "adg.content.text"
 ATTR_GUARDRAIL_DECISION = "adg.guardrail.decision"
+ATTR_GUARDRAIL_NAME = "adg.guardrail.name"
+ATTR_GUARDRAIL_STAGE = "adg.guardrail.stage"
 
 PROVENANCE_ATTRIBUTES: frozenset[str] = frozenset(
     {ATTR_SOURCE_TRUST, ATTR_DATA_LABELS, ATTR_CONTENT_REF, ATTR_CONTENT_TEXT}
 )
 
 GUARDRAIL_DECISIONS: frozenset[str] = frozenset({"allow", "block", "redact", "flag"})
+
+# Where in the session a guardrail evaluated something (0.2).
+GUARDRAIL_STAGES: frozenset[str] = frozenset(
+    {"user_prompt", "retrieval", "tool_definition", "tool_call", "tool_result", "llm_response"}
+)
+
+# Attributes that exist only on guardrail.action events.
+GUARDRAIL_ATTRIBUTES: frozenset[str] = frozenset(
+    {ATTR_GUARDRAIL_DECISION, ATTR_GUARDRAIL_NAME, ATTR_GUARDRAIL_STAGE}
+)
+
+# Attributes added in 0.2. A 0.1 event that carries one is rejected.
+ATTRIBUTES_SINCE_0_2: frozenset[str] = frozenset({ATTR_GUARDRAIL_NAME, ATTR_GUARDRAIL_STAGE})
 
 # GenAI convention attributes whose value must be a string when present.
 STRING_ATTRIBUTES: frozenset[str] = frozenset(
@@ -131,6 +146,16 @@ def _check_guardrail_decision(value: JsonValue) -> None:
         raise ValueError(f"{ATTR_GUARDRAIL_DECISION} must be one of {sorted(GUARDRAIL_DECISIONS)}")
 
 
+def _check_guardrail_stage(value: JsonValue) -> None:
+    if not isinstance(value, str) or value not in GUARDRAIL_STAGES:
+        raise ValueError(f"{ATTR_GUARDRAIL_STAGE} must be one of {sorted(GUARDRAIL_STAGES)}")
+
+
+def _check_guardrail_name(value: JsonValue) -> None:
+    if not isinstance(value, str) or _SPAN_ID.fullmatch(value) is None:
+        raise ValueError(f"{ATTR_GUARDRAIL_NAME} must be an identifier")
+
+
 # Every adg.* attribute the schema knows. Unknown adg.* keys are rejected so typos fail closed.
 ADG_ATTRIBUTES: dict[str, Callable[[JsonValue], None]] = {
     ATTR_SOURCE_TRUST: _check_source_trust,
@@ -138,6 +163,8 @@ ADG_ATTRIBUTES: dict[str, Callable[[JsonValue], None]] = {
     ATTR_CONTENT_REF: _check_content_ref,
     ATTR_CONTENT_TEXT: _check_text(ATTR_CONTENT_TEXT),
     ATTR_GUARDRAIL_DECISION: _check_guardrail_decision,
+    ATTR_GUARDRAIL_NAME: _check_guardrail_name,
+    ATTR_GUARDRAIL_STAGE: _check_guardrail_stage,
 }
 
 
@@ -146,7 +173,7 @@ class TraceEvent(BaseModel):
 
     model_config = STRICT_MODEL
 
-    schema_version: Literal["0.1"] = Field(description="Trace schema version.")
+    schema_version: SchemaVersion = Field(description="Trace schema version.")
     trace_id: Identifier = Field(description="Identifier of the session this event belongs to.")
     span_id: Identifier = Field(description="Identifier of this event, unique within the trace.")
     parent_span_id: Identifier | None = Field(
@@ -188,10 +215,12 @@ class TraceEvent(BaseModel):
         refs = self.attributes.get(ATTR_CONTENT_REF)
         if isinstance(refs, list) and self.span_id in refs:
             raise ValueError(f"{ATTR_CONTENT_REF} must not reference the event itself")
-        if ATTR_GUARDRAIL_DECISION in self.attributes and (
-            self.event_type is not EventType.GUARDRAIL_ACTION
-        ):
-            raise ValueError(f"{ATTR_GUARDRAIL_DECISION} is only allowed on guardrail.action")
+        guardrail = sorted(GUARDRAIL_ATTRIBUTES.intersection(self.attributes))
+        if guardrail and self.event_type is not EventType.GUARDRAIL_ACTION:
+            raise ValueError(f"{guardrail} are only allowed on guardrail.action")
+        newer = sorted(ATTRIBUTES_SINCE_0_2.intersection(self.attributes))
+        if newer and self.schema_version == "0.1":
+            raise ValueError(f"attributes {newer} need schema_version 0.2")
         return self
 
     def content_refs(self) -> tuple[str, ...]:
