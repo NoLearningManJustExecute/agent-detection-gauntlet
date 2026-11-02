@@ -82,10 +82,37 @@ def test_a_missing_path_is_not_flagged_unless_it_names_heldout(repo: Path) -> No
     assert heldout_inputs([missing]) == [missing]
 
 
-def test_a_corrupt_manifest_fails_closed(repo: Path) -> None:
-    (repo / "datasets" / "corpus" / "SPLIT_MANIFEST.json").write_text("not json", encoding="utf-8")
+@pytest.mark.parametrize("text", ["not json", '{"files": ["x"]}', "[]"])
+def test_a_corrupt_manifest_fails_closed(repo: Path, text: str) -> None:
+    (repo / "datasets" / "corpus" / "SPLIT_MANIFEST.json").write_text(text, encoding="utf-8")
     with pytest.raises(GauntletError, match="split manifest is not valid"):
         heldout_inputs([repo / "datasets" / "corpus" / "dev"])
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["rules-doc", "--rules", "missing"],
+        ["export-schemas"],
+        ["corpus", "card", "--corpus", "missing"],
+    ],
+)
+@pytest.mark.parametrize("target", ["docs/heldout-log.md", "datasets/corpus/heldout/x"])
+def test_every_out_flag_refuses_protected_paths(
+    repo: Path, command: list[str], target: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["--root", str(repo), *command, "--out", str(repo / target)]) == 1
+    assert "firewall-protected" in capsys.readouterr().err
+    assert not (repo / target).exists()
+
+
+def test_a_refused_output_writes_no_log_row(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(HELDOUT_ENV, "1")
+    held = repo / "datasets" / "corpus" / "heldout" / "k24"
+    bad = repo / "datasets" / "corpus" / "heldout" / "d.jsonl"
+    args = ["scan", "--rules", "missing", "--traces", str(held), "--out", str(bad)]
+    assert main(["--root", str(repo), *args]) == 1
+    assert not (repo / "docs" / "heldout-log.md").exists()
 
 
 @pytest.mark.parametrize("parent", ["", "datasets", "datasets/corpus"])

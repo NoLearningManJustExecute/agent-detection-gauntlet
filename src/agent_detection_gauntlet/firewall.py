@@ -56,9 +56,11 @@ def _pinned_heldout_hashes(paths: Iterable[Path]) -> frozenset[str]:
             continue
         try:
             files = json.loads(manifest.read_bytes()).get("files", {})
-        except (ValueError, AttributeError) as exc:
+            pinned.update(
+                str(digest) for name, digest in files.items() if name.startswith(HELDOUT_PREFIX)
+            )
+        except (ValueError, AttributeError, TypeError) as exc:
             raise InputError(manifest, "split manifest is not valid; refusing to continue") from exc
-        pinned.update(digest for name, digest in files.items() if name.startswith(HELDOUT_PREFIX))
     return frozenset(pinned)
 
 

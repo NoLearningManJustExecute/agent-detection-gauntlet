@@ -76,8 +76,8 @@ def cmd_validate_rules(args: argparse.Namespace) -> int:
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
-    require_clearance("scan", args.traces)
     refuse_output(args.out)
+    require_clearance("scan", args.traces)
     report = _require_valid_rules(args.rules, args.fixtures)
     trace_set = load_traces(args.traces)
     detections = scan([loaded.rule for loaded in report.rules], trace_set.traces)
@@ -90,8 +90,8 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
 
 def cmd_metrics(args: argparse.Namespace) -> int:
-    logged = require_clearance("metrics", [*args.traces, args.detections, args.labels])
     refuse_output(args.out)
+    logged = require_clearance("metrics", [*args.traces, args.detections, args.labels])
     labels = load_labels([args.labels])
     split = Split(args.split)
     # Synthetic fixtures carry heldout labels too; only corpus labels are the real split.
@@ -129,6 +129,7 @@ def cmd_metrics(args: argparse.Namespace) -> int:
 
 
 def cmd_export_schemas(args: argparse.Namespace) -> int:
+    refuse_output(args.out)
     if args.check:
         drift = schema_drift(args.out)
         if drift:
@@ -163,6 +164,7 @@ def cmd_fit_baselines(args: argparse.Namespace) -> int:
 
 
 def cmd_rules_doc(args: argparse.Namespace) -> int:
+    refuse_output(args.out)
     text = render_rules_doc(args.rules)
     if args.check:
         current = args.out.read_bytes().decode("utf-8") if args.out.is_file() else None
@@ -193,6 +195,7 @@ def cmd_corpus_verify(args: argparse.Namespace) -> int:
 
 
 def cmd_corpus_card(args: argparse.Namespace) -> int:
+    refuse_output(args.out)
     text = render_card(args.corpus)
     if args.check:
         current = args.out.read_bytes().decode("utf-8") if args.out.is_file() else None
