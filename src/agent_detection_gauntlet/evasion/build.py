@@ -62,9 +62,12 @@ def expected_inputs(plan: EvasionPlan, inputs: Mapping[str, Any]) -> set[str]:
     return {item["scenario_id"] for item in inputs["scenarios"]} | set(plan.attack_variants)
 
 
-def _check_source(plan: EvasionPlan, source: Source, inputs: Mapping[str, Any]) -> None:
+def _check_source(
+    plan: EvasionPlan, source: Source, inputs: Mapping[str, Any], export_commit: str | None
+) -> None:
     manifest = source.manifest
-    if manifest.get("source_commit") != plan.source_commit:
+    # The runs happened at the registered commit. A later exporter must be named on purpose.
+    if manifest.get("source_commit") not in (plan.source_commit, export_commit):
         raise GauntletError("the export ran from another source commit than the registered one")
     if (manifest.get("model"), manifest.get("model_digest")) != (plan.model, plan.model_digest):
         raise GauntletError("the export names another model than the registered one")
@@ -80,11 +83,13 @@ def _check_source(plan: EvasionPlan, source: Source, inputs: Mapping[str, Any]) 
         raise GauntletError(f"the export and the inputs differ: {sorted(ran ^ expected)[:5]}")
 
 
-def build_evasion(source_path: Path, out: Path, plan: EvasionPlan) -> tuple[int, int]:
+def build_evasion(
+    source_path: Path, out: Path, plan: EvasionPlan, export_commit: str | None = None
+) -> tuple[int, int]:
     """Write labels, raw index and traces. Returns (raw runs, unique traces)."""
     source = load_source(source_path)
     inputs = read_inputs_file(out)
-    _check_source(plan, source, inputs)
+    _check_source(plan, source, inputs, export_commit)
 
     kept: dict[tuple[str, str], str] = {}
     for trace_id in sorted(source.labels):
@@ -121,6 +126,7 @@ def build_evasion(source_path: Path, out: Path, plan: EvasionPlan) -> tuple[int,
             **{k: v for k, v in source.manifest.items() if k != "files"},
             "seeds": _seed_range(source),
         },
+        "run_commit": plan.source_commit,
         "plan_sha256": hashlib.sha256(
             pretty_json(plan.model_dump(mode="json")).encode("utf-8")
         ).hexdigest(),

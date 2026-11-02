@@ -672,6 +672,26 @@ def test_build_refuses_a_foreign_export(
         build_evasion(source, evasion, plan)
 
 
+def test_build_accepts_a_later_exporter_only_when_named(project: Path) -> None:
+    plan = _plan(project)
+    evasion = project / "datasets" / "evasion"
+    doc = build_inputs(plan.bases, _catalog(project), plan.source_commit)
+    write_text(evasion / INPUTS_FILE, pretty_json(doc))
+    source = _export(project, plan)
+    path = source / "export_manifest.json"
+    later = "c" * 40
+    write_text(
+        path, json.dumps({**json.loads(path.read_text(encoding="utf-8")), "source_commit": later})
+    )
+    with pytest.raises(GauntletError, match="another source commit"):
+        build_evasion(source, evasion, plan)
+    build_evasion(source, evasion, plan, later)
+    manifest = json.loads((evasion / MANIFEST).read_text(encoding="utf-8"))
+    assert manifest["source"]["source_commit"] == later
+    assert manifest["run_commit"] == plan.source_commit
+    assert verify_evasion(plan, project / "datasets" / "corpus", evasion) == []
+
+
 def test_build_refuses_missing_inputs(project: Path) -> None:
     plan = _plan(project)
     evasion = project / "datasets" / "evasion"

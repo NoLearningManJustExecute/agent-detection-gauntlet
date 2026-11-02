@@ -414,7 +414,8 @@ def cmd_evasion_mutate(args: argparse.Namespace) -> int:
 
 
 def cmd_evasion_build(args: argparse.Namespace) -> int:
-    raw, unique = build_evasion(args.source, args.evasion, read_plan(args.plan))
+    plan = read_plan(args.plan)
+    raw, unique = build_evasion(args.source, args.evasion, plan, args.export_commit)
     print(f"ok: {raw} raw runs, {unique} unique traces -> {shown_path(args.evasion)}")
     return 0
 
@@ -603,6 +604,7 @@ def build_parser() -> argparse.ArgumentParser:
     e.set_defaults(handler=cmd_evasion_mutate)
     e = esub.add_parser("build", help="dedupe the export of the evasion runs and pin it")
     e.add_argument("--source", type=Path, required=True, help="export dir")
+    e.add_argument("--export-commit", default=None, help="a later exporter, named on purpose")
     e.add_argument("--plan", type=Path, default=EVASION_PLAN)
     e.add_argument("--evasion", type=Path, default=EVASION_INPUTS)
     e.set_defaults(handler=cmd_evasion_build)
