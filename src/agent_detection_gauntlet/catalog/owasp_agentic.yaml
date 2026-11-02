@@ -6,3 +6,18 @@ entries:
     url: https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
     version: "2026"
     verified: false
+  - id: ASI02
+    name: Tool Misuse and Exploitation
+    url: https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
+    version: "2026"
+    verified: false
+  - id: ASI03
+    name: Identity and Privilege Abuse
+    url: https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
+    version: "2026"
+    verified: false
+  - id: ASI04
+    name: Agentic Supply Chain Vulnerabilities
+    url: https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
+    version: "2026"
+    verified: false

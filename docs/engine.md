@@ -3,7 +3,7 @@
 This document specifies exactly what the detection engine does. The code is in
 `src/agent_detection_gauntlet/engine/`: `fields.py` (field resolution and equality),
 `conditions.py` (operators and normalization), `primitives.py` (`match`, `sequence`,
-`threshold`) and `executor.py` (running rules and building detection records). Rule syntax is in
+`threshold`, `baseline`) and `executor.py` (running rules and building detection records). Rule syntax is in
 [rule-format.md](rule-format.md).
 
 The engine reads rules and traces. **It never reads labels.** `gauntlet scan` has no labels
@@ -26,6 +26,8 @@ A field reference resolves against one event:
 | `span_id` | The span id. |
 | `parent_span_id` | The parent span id, or missing for a root event. |
 | `attributes.<key>` | `attributes[<key>]` using the full key, or missing if absent. |
+| `attributes.<key>#<path>` | Format 1.1. Follows dot-separated object keys and list indexes inside the value. Missing if the path reaches nothing. |
+| `attributes.<key>#*` | Format 1.1. Every string inside the value joined with newlines, object keys in sorted order and list items in order. Missing if there are none. Numbers and booleans are not included. |
 
 **A JSON `null` counts as missing.** An attribute present with value `null` behaves exactly like
 an absent attribute. Because of this, the rule model rejects `null` as an operand (for `equals`,
@@ -85,8 +87,8 @@ Every operator except `exists` is false when the field is missing.
 
 Notes:
 
-- `contains` on an object never looks inside it. Because there is no path syntax, a condition
-  on a key inside `gen_ai.tool.call.arguments` is not expressible in this version.
+- `contains` on an object never looks inside it. To reach a key inside
+  `gen_ai.tool.call.arguments`, use a value path (`#<key>`) or `#*`.
 - `regex` uses Python's `re` module with no flags. Compiled patterns are cached.
 
 ## Condition combinators
@@ -156,6 +158,12 @@ link anywhere in the chain breaks derivation.
 
 `derives_from` is usually paired with a `bind` of `span_id` in an earlier step, as in ADG-0001.
 
+**`first_occurrence`.** Format 1.1. Before the search, a step with `first_occurrence` keeps only
+the events that match the step and are the first such event in the trace with their value of that
+field. Values compare by canonical JSON, as in `threshold` `distinct`. An event without the field
+is dropped. A later step's window or requirements do not change which event is first, so a trace
+that used the tool before the source event never fires on that tool.
+
 ## `threshold`
 
 `threshold` evaluates once per trace and emits **at most one detection per trace**.
@@ -176,6 +184,28 @@ Only `gte`, `gt` and `eq` with `value >= 1` are allowed because a detection must
 one event. Comparisons such as "fewer than N" or "exactly 0" would fire on the absence of events
 and leave nothing to point at. Absence-based logic is out of scope for this version.
 
+## `baseline`
+
+`baseline` compares a trace with a statistic fitted on dev benign traces. The engine reads the
+`fitted` block in the rule and never reads labels; only `gauntlet fit-baselines` does, and that
+code lives outside the engine package.
+
+**`chain_length`** counts the events that match `match`. The fit takes the nearest-rank percentile
+of that count over the population: the smallest count with at least `percentile` percent of traces
+at or below it, including traces with a count of zero. A trace fires when its count is strictly
+above the fitted threshold. At most one detection per trace, citing every counted event. A trace
+with no matching event cannot fire.
+
+**`rare_transition`** walks the events that match `match` and have a string `key`, forming pairs of
+consecutive keys. The first event pairs with `<start>`, so a first call has a transition too. The
+fit counts every pair over the population. A pair fires when its count is below
+`max_rate * total`, where `total` is the sum of the fitted counts, so a pair never seen fires
+whenever any count exists. One detection per firing pair, citing both events, or the one event when
+the pair starts at `<start>`.
+
+Fitting is deterministic: integer counts, traces in `trace_id` order, sorted output. The fitted
+values are part of the rule file, so they are covered by anything that hashes the rule.
+
 ## Detection records
 
 For every hit the executor writes a record (format in [schema.md](schema.md#detections)):
@@ -184,7 +214,8 @@ For every hit the executor writes a record (format in [schema.md](schema.md#dete
 - `trace_id` is the trace the hit is in.
 - `matched_span_ids` lists the span ids of the hit's events in hit order: one span for `match`;
   one span per step, in step order, for `sequence` (which is also canonical order, since indices
-  strictly increase); all cited events in canonical order for `threshold`.
+  strictly increase); all cited events in canonical order for `threshold`; the events named above
+  for `baseline`.
 - `first_timestamp` and `last_timestamp` are the earliest and latest timestamps among those
   events.
 
@@ -213,6 +244,6 @@ The same rules and traces always produce the same detections file, byte for byte
   `events^(steps - 1)` assignments per final event, so `events^steps` per trace. This is
   acceptable for traces of tens to hundreds of events and two or three steps. `within_events`
   and `within_seconds` reduce the search space.
-- `match` and `threshold` are linear in the number of events.
+- `match`, `threshold` and `baseline` are linear in the number of events.
 - `regex` cost depends on the pattern. Python's `re` has no backtracking limit; see
   [SECURITY.md](../SECURITY.md).

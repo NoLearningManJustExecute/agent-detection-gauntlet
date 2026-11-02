@@ -7,11 +7,12 @@ from collections.abc import Sequence
 from agent_detection_gauntlet.engine.primitives import (
     Hit,
     TraceContext,
+    run_baseline,
     run_match,
     run_sequence,
     run_threshold,
 )
-from agent_detection_gauntlet.rules.model import MatchLogic, Rule, SequenceLogic
+from agent_detection_gauntlet.rules.model import BaselineLogic, MatchLogic, Rule, SequenceLogic
 from agent_detection_gauntlet.schema.common import SCHEMA_VERSION
 from agent_detection_gauntlet.schema.detection import Detection
 from agent_detection_gauntlet.schema.trace import Trace
@@ -23,6 +24,10 @@ def rule_hits(rule: Rule, context: TraceContext) -> list[Hit]:
         return run_match(logic.match, context)
     if isinstance(logic, SequenceLogic):
         return run_sequence(logic.sequence, context)
+    if isinstance(logic, BaselineLogic):
+        if rule.fitted is None:
+            raise ValueError(f"{rule.id} has no fitted baseline; run gauntlet fit-baselines")
+        return run_baseline(logic.baseline, rule.fitted, context)
     return run_threshold(logic.threshold, context)
 
 

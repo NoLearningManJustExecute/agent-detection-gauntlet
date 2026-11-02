@@ -6,7 +6,11 @@ from typing import Final
 
 from pydantic import JsonValue
 
-from agent_detection_gauntlet.rules.model import ATTRIBUTE_PREFIX
+from agent_detection_gauntlet.rules.model import (
+    ALL_STRINGS_PATH,
+    ATTRIBUTE_PREFIX,
+    PATH_SEPARATOR,
+)
 from agent_detection_gauntlet.schema.trace import TraceEvent
 
 
@@ -27,6 +31,32 @@ class _Missing:
 MISSING: Final = _Missing()
 
 
+def _strings_in(value: JsonValue) -> list[str]:
+    """Every string inside a value: object keys in sorted order, list items in order."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [text for item in value for text in _strings_in(item)]
+    if isinstance(value, dict):
+        return [text for key in sorted(value) for text in _strings_in(value[key])]
+    return []
+
+
+def _walk(value: JsonValue, path: str) -> JsonValue:
+    """Follow a value path. Anything the path does not reach comes back as None."""
+    if path == ALL_STRINGS_PATH:
+        strings = _strings_in(value)
+        return "\n".join(strings) if strings else None
+    for segment in path.split("."):
+        if isinstance(value, dict):
+            value = value.get(segment)
+        elif isinstance(value, list) and segment.isdecimal() and int(segment) < len(value):
+            value = value[int(segment)]
+        else:
+            return None
+    return value
+
+
 def resolve(event: TraceEvent, field: str) -> JsonValue | _Missing:
     """Return the value of ``field`` on ``event``, or MISSING. Null counts as missing."""
     value: JsonValue
@@ -37,7 +67,10 @@ def resolve(event: TraceEvent, field: str) -> JsonValue | _Missing:
     elif field == "parent_span_id":
         value = event.parent_span_id
     elif field.startswith(ATTRIBUTE_PREFIX):
-        value = event.attributes.get(field[len(ATTRIBUTE_PREFIX) :])
+        key, separator, path = field[len(ATTRIBUTE_PREFIX) :].partition(PATH_SEPARATOR)
+        value = event.attributes.get(key)
+        if separator and value is not None:
+            value = _walk(value, path)
     else:
         raise ValueError(f"unsupported field reference {field!r}")
     return MISSING if value is None else value

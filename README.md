@@ -29,14 +29,17 @@ Phase 0 contains:
   plus a small set of `adg.*` provenance extensions ([docs/schema.md](docs/schema.md)).
 - A native YAML rule format with framework mappings, hypothesis, limitations and fixtures
   ([docs/rule-format.md](docs/rule-format.md)).
-- A detection engine with three primitives: `match`, `sequence` (with value binding and
-  provenance following) and `threshold` ([docs/engine.md](docs/engine.md)).
+- A detection engine with four primitives: `match`, `sequence` (with value binding and
+  provenance following), `threshold` and `baseline` (fitted on dev benign traces)
+  ([docs/engine.md](docs/engine.md)).
+- Content, sequence and behavior detection rules, as hypotheses still to be scored
+  ([docs/detections.md](docs/detections.md)).
 - A rule validator that checks schema, mapping IDs against a catalog, and true positive and
   false positive fixtures.
 - A metrics stage that produces session-level confusion matrices and rates with Wilson 95%
   intervals ([docs/metrics.md](docs/metrics.md)).
 - A command line interface, `gauntlet`.
-- Nine synthetic fixture traces with labels, used only to check that the pipeline works.
+- Ten synthetic fixture traces with labels, used only to check that the pipeline works.
 
 ## Quickstart
 

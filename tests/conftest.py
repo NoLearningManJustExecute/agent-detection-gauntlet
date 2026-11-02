@@ -12,6 +12,8 @@ from typing import Any
 import pytest
 import yaml
 
+from agent_detection_gauntlet import firewall
+from agent_detection_gauntlet.io.jsonl import write_text
 from agent_detection_gauntlet.paths import set_repo_root
 from agent_detection_gauntlet.rules.model import Rule
 from agent_detection_gauntlet.schema.trace import Trace, TraceEvent, event_order_key
@@ -20,6 +22,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_TRACES = REPO_ROOT / "datasets" / "fixtures" / "traces"
 FIXTURE_LABELS = REPO_ROOT / "datasets" / "fixtures" / "labels.jsonl"
 RULES_DIR = REPO_ROOT / "rules"
+DEV_TRACES = REPO_ROOT / "datasets" / "corpus" / "dev" / "k24"
+RULE_FIXTURES = (FIXTURE_TRACES, DEV_TRACES)
+# One rule with synthetic fixtures only, for tests of the pipeline rather than of the rule set.
+PLUMBING_RULES = REPO_ROOT / "tests" / "data" / "rules"
 
 BASE_TIME = datetime(2026, 1, 15, 9, 0, tzinfo=UTC)
 
@@ -156,6 +162,20 @@ def fixture_dir(tmp_path: Path) -> Path:
     write_lines(directory / "t-tp.jsonl", taint_trace_events("t-tp"))
     write_lines(directory / "t-fp.jsonl", taint_trace_events("t-fp", trust="trusted"))
     return directory
+
+
+@pytest.fixture(autouse=True)
+def _protect_the_real_log(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may declare held-out scoring by accident or write the real access log."""
+    monkeypatch.delenv(firewall.HELDOUT_ENV, raising=False)
+    real_log = (REPO_ROOT / firewall.LOG_PATH).resolve()
+
+    def guarded(path: Path, text: str) -> None:
+        if path.resolve() == real_log:
+            raise AssertionError("a test tried to write the real held-out access log")
+        write_text(path, text)
+
+    monkeypatch.setattr(firewall, "write_text", guarded)
 
 
 @pytest.fixture(autouse=True)

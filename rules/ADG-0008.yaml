@@ -1,0 +1,63 @@
+id: ADG-0008
+title: Secret read followed by an external send
+version: 0.1.0
+status: experimental
+tier: sequence
+severity: high
+description: Fires when a trace reads data labeled secret or pii and later calls an outbound tool,
+  with no untrusted precondition.
+hypothesis: Sending after reading sensitive data is the shape of exfiltration whether the instruction
+  came from a document or from the user, so dropping the precondition should reach direct attacks
+  at a cost in false positives.
+mappings:
+  atlas:
+  - AML.T0057
+  owasp_llm:
+  - LLM02
+  owasp_agentic:
+  - ASI02
+  attack: []
+telemetry:
+- tool.result
+- tool.call
+logic:
+  sequence:
+    steps:
+    - name: secret_read
+      match:
+        event_types:
+        - tool.result
+        where:
+          any:
+          - field: attributes.adg.data.labels
+            op: contains
+            value: secret
+          - field: attributes.adg.data.labels
+            op: contains
+            value: pii
+    - name: external_send
+      match:
+        event_types:
+        - tool.call
+        where:
+          field: attributes.gen_ai.tool.name
+          op: regex
+          value: ^(send|post|upload|http)
+          normalize:
+          - nfkc
+          - casefold
+limitations:
+- In the dev split it fires only on failed attacks of the ineffective class AC03, so its true positive
+  fixture is synthetic and the rule is unproven on a successful real trace.
+- A user who reads a credential file and then sends an unrelated message produces the same sequence,
+  since the rule does not check that the secret reached the send.
+- Secrets taken from the system prompt or from memory are not labeled tool results and are not covered.
+fixtures:
+  tp:
+  - syn-0010
+  fp:
+  - arf-0003bc96b3a5c6cd552995df
+  - arf-01bf1977b0fca076a986ea7c
+  - arf-0019bfe6f05e6c313357146b
+  - arf-0591f21b742d9ac12eea7599
+  - arf-005b4764abe14b32ad78cc11

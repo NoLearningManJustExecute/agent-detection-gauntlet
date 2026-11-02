@@ -1,0 +1,78 @@
+id: ADG-0007
+title: Untrusted read, then secret read, then external send
+version: 0.1.0
+status: experimental
+tier: sequence
+severity: critical
+description: Fires when one trace reads untrusted content, later reads data labeled secret or pii,
+  and later still calls an outbound tool.
+hypothesis: An exfiltration driven by injected content needs all three steps in this order. The order
+  does not depend on wording, so it should survive payload mutations that leave the tool sequence
+  alone.
+mappings:
+  atlas:
+  - AML.T0051.001
+  - AML.T0053
+  owasp_llm:
+  - LLM01
+  - LLM02
+  owasp_agentic:
+  - ASI01
+  - ASI02
+  attack: []
+telemetry:
+- retrieval
+- tool.result
+- tool.call
+logic:
+  sequence:
+    steps:
+    - name: untrusted_read
+      match:
+        event_types:
+        - retrieval
+        - tool.result
+        where:
+          field: attributes.adg.source.trust
+          op: equals
+          value: untrusted
+    - name: secret_read
+      match:
+        event_types:
+        - tool.result
+        where:
+          any:
+          - field: attributes.adg.data.labels
+            op: contains
+            value: secret
+          - field: attributes.adg.data.labels
+            op: contains
+            value: pii
+    - name: external_send
+      match:
+        event_types:
+        - tool.call
+        where:
+          field: attributes.gen_ai.tool.name
+          op: regex
+          value: ^(send|post|upload|http)
+          normalize:
+          - nfkc
+          - casefold
+limitations:
+- The dev split holds no trace with this shape, so the true positive fixture is synthetic and the
+  rule is unproven on real traces.
+- It needs no data link between the steps, so a task that happens to do all three in order fires.
+- It depends on instrumentation labeling trust and sensitivity. An unlabeled read hides the step and
+  the rule misses.
+- An attack that takes the secret from the system prompt rather than a tool result has no secret read
+  step and is not covered.
+fixtures:
+  tp:
+  - syn-0010
+  fp:
+  - arf-0003bc96b3a5c6cd552995df
+  - arf-01bf1977b0fca076a986ea7c
+  - arf-0019bfe6f05e6c313357146b
+  - arf-0591f21b742d9ac12eea7599
+  - arf-005b4764abe14b32ad78cc11

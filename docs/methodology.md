@@ -27,6 +27,23 @@ would not have.
   default and records the split in every report.
 - If held-out results are poor, the rule is not retuned against them and re-scored. Results are
   reported as measured.
+- The command line enforces this. `gauntlet scan` and `gauntlet metrics` refuse held-out inputs
+  unless `GAUNTLET_SCORING_HELDOUT=1` is set, and every such run is appended to
+  [heldout-log.md](heldout-log.md), in the checkout the input sits in, before any trace is read.
+  An input counts as held-out by what it would read: its path or an expanded file is under
+  `corpus/heldout`, or a file's hash is pinned as held-out in the split manifest. `metrics` checks
+  `--traces`, `--detections` and `--labels` this way, then reads the labels and also treats scoring
+  the held-out split of labels that are not synthetic as a held-out read. Rule fixtures and baseline
+  fits refuse held-out data whatever the environment says. Commands that take `--out` may not write
+  into the held-out folder or over the log; `gauntlet corpus build` is the one exception, since it
+  creates the split, and CI's freeze check covers it.
+- What this does not cover: `gauntlet validate-traces`, `gauntlet corpus verify` and `gauntlet
+  corpus card` read the split on purpose, for CI's freeze and schema checks, and the leak guard
+  scans the whole tree, including held-out files, and reports hits only. A deleted manifest
+  disables copy detection, and an edited copy no longer matches its pinned hash; path checks still
+  apply.
+- Behavior thresholds are fitted by code on dev benign traces only, and the fit command is
+  recorded in the rule. See [engine.md](engine.md#baseline).
 
 ## Outcome buckets
 

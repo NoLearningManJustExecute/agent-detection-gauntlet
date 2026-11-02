@@ -205,7 +205,7 @@ def test_yaml_document_rules() -> None:
 def test_yaml_number_for_version_fails_closed(tmp_path: Path) -> None:
     text = (RULES_DIR / "ADG-0001.yaml").read_text(encoding="utf-8")
     path = tmp_path / "ADG-0001.yaml"
-    path.write_text(text.replace("version: 0.1.0", "version: 1.5"), encoding="utf-8")
+    path.write_text(text.replace("version: 0.1.1", "version: 1.5"), encoding="utf-8")
     with pytest.raises(InputError, match="version"):
         load_rule_file(path)
 

@@ -1,4 +1,4 @@
-"""The three logic primitives. Each returns hits as tuples of event indices into the trace.
+"""The logic primitives. Each returns hits as tuples of event indices into the trace.
 
 Semantics are specified in docs/engine.md. Everything here is deterministic: events are
 visited in canonical trace order and the first valid assignment in that order wins.
@@ -15,7 +15,10 @@ from agent_detection_gauntlet.engine.conditions import matches
 from agent_detection_gauntlet.engine.fields import MISSING, _Missing, json_equal, resolve
 from agent_detection_gauntlet.io.jsonl import canonical_json
 from agent_detection_gauntlet.rules.model import (
+    BaselineSpec,
+    BaselineStatistic,
     EventMatch,
+    FittedBaseline,
     Requirement,
     RequireOp,
     SequenceSpec,
@@ -144,6 +147,23 @@ class _SequenceSearch:
         return None
 
 
+def _step_candidates(step: SequenceStep, events: tuple[TraceEvent, ...]) -> list[bool]:
+    """Which events can serve the step, applying first_occurrence when the step has it."""
+    holds = [matches(step.match, event) for event in events]
+    if step.first_occurrence is None:
+        return holds
+    seen: set[str] = set()
+    for index, event in enumerate(events):
+        if not holds[index]:
+            continue
+        value = resolve(event, step.first_occurrence)
+        key = None if isinstance(value, _Missing) else canonical_json(_number_key(value))
+        holds[index] = key is not None and key not in seen
+        if key is not None:
+            seen.add(key)
+    return holds
+
+
 def run_sequence(spec: SequenceSpec, context: TraceContext) -> list[Hit]:
     """At most one hit per event that can serve as the last step.
 
@@ -151,7 +171,7 @@ def run_sequence(spec: SequenceSpec, context: TraceContext) -> list[Hit]:
     index assignment that satisfies order, window, and bind constraints.
     """
     events = context.trace.events
-    candidates = [[matches(step.match, event) for event in events] for step in spec.steps]
+    candidates = [_step_candidates(step, events) for step in spec.steps]
     hits: list[Hit] = []
     for end in range(len(events)):
         if not candidates[-1][end]:
@@ -201,3 +221,47 @@ def run_threshold(spec: ThresholdSpec, context: TraceContext) -> list[Hit]:
     if counted and _compare(spec.op, count, spec.value):
         return [tuple(counted)]
     return []
+
+
+# Stands for the start of a trace in a transition, so the first tool has a transition too.
+TRANSITION_START = "<start>"
+
+
+def transition_key(previous: str, current: str) -> str:
+    return f"{previous} -> {current}"
+
+
+def baseline_events(spec: BaselineSpec, trace: Trace) -> list[int]:
+    return [index for index, event in enumerate(trace.events) if matches(spec.match, event)]
+
+
+def trace_transitions(spec: BaselineSpec, trace: Trace) -> list[tuple[int | None, int, str]]:
+    """(previous index, index, transition key) for each pair of consecutive keyed events."""
+    if spec.key is None:  # pragma: no cover - rejected by the rule model
+        return []
+    transitions: list[tuple[int | None, int, str]] = []
+    previous_index: int | None = None
+    previous = TRANSITION_START
+    for index in baseline_events(spec, trace):
+        name = resolve(trace.events[index], spec.key)
+        if not isinstance(name, str):
+            continue
+        transitions.append((previous_index, index, transition_key(previous, name)))
+        previous_index, previous = index, name
+    return transitions
+
+
+def run_baseline(spec: BaselineSpec, fitted: FittedBaseline, context: TraceContext) -> list[Hit]:
+    """chain_length: one hit per trace. rare_transition: one hit per rare transition."""
+    if spec.statistic is BaselineStatistic.CHAIN_LENGTH:
+        indices = baseline_events(spec, context.trace)
+        fired = fitted.threshold is not None and len(indices) > fitted.threshold
+        return [tuple(indices)] if fired else []
+    counts = fitted.transitions or {}
+    total = sum(counts.values())
+    limit = spec.max_rate if spec.max_rate is not None else 0.0
+    hits: list[Hit] = []
+    for previous, index, key in trace_transitions(spec, context.trace):
+        if counts.get(key, 0) < limit * total:
+            hits.append((index,) if previous is None else (previous, index))
+    return hits

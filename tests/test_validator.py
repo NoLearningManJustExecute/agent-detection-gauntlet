@@ -15,7 +15,7 @@ from agent_detection_gauntlet.catalog import (
 )
 from agent_detection_gauntlet.errors import CatalogError
 from agent_detection_gauntlet.rules.validator import IssueLevel, ValidationReport, validate_rules
-from tests.conftest import FIXTURE_TRACES, RULES_DIR, rule_data, write_rule
+from tests.conftest import RULE_FIXTURES, RULES_DIR, rule_data, write_rule
 
 
 def entry(mapping_id: str, verified: bool = True) -> CatalogEntry:
@@ -55,10 +55,11 @@ def test_valid_rule_passes(tmp_path: Path, fixture_dir: Path) -> None:
 
 
 def test_repository_rules_validate_against_repository_fixtures() -> None:
-    report = validate_rules(RULES_DIR, [FIXTURE_TRACES], load_catalog())
+    report = validate_rules(RULES_DIR, RULE_FIXTURES, load_catalog())
     assert report.ok, [issue.render() for issue in report.errors]
     # Catalog entries ship unverified until Phase 7 checks them, so each mapping warns.
-    assert len(report.warnings) == 3
+    mappings = [loaded.rule.mappings.by_family() for loaded in report.rules]
+    assert len(report.warnings) == sum(len(ids) for family in mappings for ids in family.values())
 
 
 def test_schema_error(tmp_path: Path, fixture_dir: Path) -> None:

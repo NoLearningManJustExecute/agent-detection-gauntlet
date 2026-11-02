@@ -1,0 +1,51 @@
+format_version: '1.1'
+id: ADG-0004
+title: Encoded blob in outbound tool arguments
+version: 0.1.0
+status: experimental
+tier: content
+severity: medium
+description: Fires when an outbound tool call's arguments hold an unbroken base64 or hex run of at
+  least 24 characters.
+hypothesis: Encoding hides content from filters and from a human reviewer, and ordinary mail text
+  has no reason to hold a long unbroken base64 or hex run. Presence of the blob should be visible
+  even when its meaning is not.
+mappings:
+  atlas:
+  - AML.T0057
+  owasp_llm:
+  - LLM02
+  owasp_agentic:
+  - ASI02
+  attack: []
+telemetry:
+- tool.call
+logic:
+  match:
+    event_types:
+    - tool.call
+    where:
+      all:
+      - field: attributes.gen_ai.tool.name
+        op: regex
+        value: ^(send|post|upload|http)
+        normalize:
+        - nfkc
+        - casefold
+      - field: attributes.gen_ai.tool.call.arguments#*
+        op: regex
+        value: '[A-Za-z0-9+/]{24,}={0,2}'
+limitations:
+- Long identifiers, hashes and URL paths match; so would a legitimate attachment sent inline.
+- A blob split with spaces or line breaks into runs under 24 characters does not match, and neither
+  does an encoding outside these alphabets.
+- The outbound tool list is a name pattern, so a renamed sink is not covered.
+fixtures:
+  tp:
+  - arf-12f8451435af79518ae294a0
+  fp:
+  - arf-0003bc96b3a5c6cd552995df
+  - arf-01bf1977b0fca076a986ea7c
+  - arf-0019bfe6f05e6c313357146b
+  - arf-0591f21b742d9ac12eea7599
+  - arf-005b4764abe14b32ad78cc11

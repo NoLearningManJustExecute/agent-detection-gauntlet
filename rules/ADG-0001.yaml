@@ -1,6 +1,6 @@
 id: ADG-0001
 title: Untrusted retrieved content flows into an external send tool call
-version: 0.1.0
+version: 0.1.1
 status: experimental
 tier: sequence
 severity: high
@@ -70,9 +70,19 @@ limitations:
     public article, produces the same data flow and the rule fires.
   - >-
     The rule fires whether or not the send succeeded or was blocked downstream by a guardrail.
+  - >-
+    The dev split shows the source and sink lists matter: tool metadata counts as a retrieval,
+    but untrusted tool results and a poisoned send tool are not covered here. ADG-0009 and
+    ADG-0012 cover those.
 fixtures:
   tp:
     - syn-0001
+    - arf-0165b1b4516be280a771480a
   fp:
     - syn-0002
     - syn-0003
+    - arf-0003bc96b3a5c6cd552995df
+    - arf-01bf1977b0fca076a986ea7c
+    - arf-0019bfe6f05e6c313357146b
+    - arf-0591f21b742d9ac12eea7599
+    - arf-005b4764abe14b32ad78cc11

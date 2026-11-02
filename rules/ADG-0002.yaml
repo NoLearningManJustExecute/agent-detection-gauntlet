@@ -1,0 +1,57 @@
+id: ADG-0002
+title: Injection phrasing in retrieved or tool-result content
+version: 0.1.0
+status: experimental
+tier: content
+severity: medium
+description: Fires on text in a retrieval or tool result that addresses the agent with override or
+  imperative phrasing, after NFKC normalization, case folding and whitespace collapse.
+hypothesis: 'Injected instructions tend to reuse a small set of override idioms. A normalized phrase
+  list is the honest keyword baseline: it should catch authored injections and lose recall as soon
+  as the wording is paraphrased or translated.'
+mappings:
+  atlas:
+  - AML.T0051.001
+  owasp_llm:
+  - LLM01
+  owasp_agentic:
+  - ASI01
+  attack: []
+telemetry:
+- retrieval
+- tool.result
+logic:
+  match:
+    event_types:
+    - retrieval
+    - tool.result
+    where:
+      field: attributes.adg.content.text
+      op: regex
+      normalize:
+      - nfkc
+      - casefold
+      - collapse_whitespace
+      value: ignore (all |any )?(of )?(the |your )?(previous|prior|above|earlier) (instructions|prompts?|rules)|disregard
+        (all |any )?(of )?(the |your )?(previous|prior|above|earlier)|new instructions?:|system (notice|override):|you
+        are now |you must (also )?(call|send|read|include|forward|use) |do not (tell|inform|mention)(
+        this)?( to)?( the)? user|<important>|before (every|each|any) (search|call|request|use)|always
+        use\b
+limitations:
+- The phrase list is English. A translated or paraphrased injection with the same effect does not
+  match.
+- Documents that discuss prompt injection, or legitimately say 'you must use' or 'always use' in instructions
+  to a human reader, match the same phrases.
+- It reads adg.content.text only, so an encoded or split payload is invisible until something decodes
+  it.
+fixtures:
+  tp:
+  - arf-00233f2ba64534ac2415000b
+  - arf-0165b1b4516be280a771480a
+  - arf-2c7627ab616af6406928bed7
+  fp:
+  - arf-0003bc96b3a5c6cd552995df
+  - arf-01bf1977b0fca076a986ea7c
+  - arf-0019bfe6f05e6c313357146b
+  - arf-0591f21b742d9ac12eea7599
+  - arf-005b4764abe14b32ad78cc11
