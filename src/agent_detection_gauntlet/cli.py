@@ -54,6 +54,8 @@ from agent_detection_gauntlet.evasion.plan import (
 )
 from agent_detection_gauntlet.evasion.report import render_results as render_evasion
 from agent_detection_gauntlet.evasion.score import score_evasion
+from agent_detection_gauntlet.export.convert import FORMATS
+from agent_detection_gauntlet.export.run import export_rules
 from agent_detection_gauntlet.firewall import (
     refuse_heldout,
     refuse_output,
@@ -80,6 +82,7 @@ from agent_detection_gauntlet.metrics.compute import (
 from agent_detection_gauntlet.metrics.report import InputRole
 from agent_detection_gauntlet.paths import repo_relative, set_repo_root, shown_path
 from agent_detection_gauntlet.rules.docgen import render as render_rules_doc
+from agent_detection_gauntlet.rules.lint import lint_rules
 from agent_detection_gauntlet.rules.validator import ValidationReport, validate_rules
 from agent_detection_gauntlet.schema.detection import Detection
 from agent_detection_gauntlet.schema.export import export_schemas, schema_drift
@@ -578,6 +581,30 @@ def cmd_coverage_claims(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_lint_rules(args: argparse.Namespace) -> int:
+    report = _require_valid_rules(args.directory, args.fixtures)
+    issues = lint_rules(report.rules)
+    for issue in issues:
+        print(f"error: {issue.render()}", file=sys.stderr)
+    if issues:
+        return 1
+    print(f"ok: {len(report.rules)} rule(s) lint clean")
+    return 0
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    refuse_output(args.out)
+    report = _require_valid_rules(args.rules, args.fixtures)
+    targets = list(FORMATS) if args.format == "all" else [args.format]
+    summary = export_rules(report.rules, targets, args.out)
+    for target in targets:
+        converted = len(summary.converted.get(target, []))
+        skipped = len(summary.not_converted.get(target, []))
+        print(f"{target}: {converted} converted, {skipped} not")
+    print(f"ok: wrote {shown_path(args.out)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gauntlet",
@@ -638,6 +665,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", type=Path, default=DEFAULT_DETECTIONS_DOC)
     p.add_argument("--check", action="store_true", help="fail if the doc is out of date")
     p.set_defaults(handler=cmd_rules_doc)
+
+    p = sub.add_parser("lint-rules", help="style and completeness checks on native rules")
+    p.add_argument("directory", type=Path, nargs="?", default=DEFAULT_RULES)
+    p.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
+    p.set_defaults(handler=cmd_lint_rules)
+
+    p = sub.add_parser("export", help="generate SIEM artifacts from the native rules")
+    p.add_argument("--format", choices=[*FORMATS, "all"], required=True)
+    p.add_argument("--out", type=Path, default=Path("dist/rules"))
+    p.add_argument("--rules", type=Path, default=DEFAULT_RULES)
+    p.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
+    p.set_defaults(handler=cmd_export)
 
     validation = sub.add_parser("validation", help="pre-register, score and report the baseline")
     vsub = validation.add_subparsers(dest="validation_command", required=True, metavar="action")
