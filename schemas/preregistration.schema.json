@@ -1,0 +1,256 @@
+{
+  "$defs": {
+    "CoverageThresholds": {
+      "additionalProperties": false,
+      "description": "What Phase 5 needs to call a technique covered. Compared with the point estimates.",
+      "properties": {
+        "max_fpr": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Max Fpr",
+          "type": "number"
+        },
+        "min_heldout_recall": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Heldout Recall",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_heldout_recall",
+        "max_fpr"
+      ],
+      "title": "CoverageThresholds",
+      "type": "object"
+    },
+    "FrozenRule": {
+      "additionalProperties": false,
+      "description": "A rule as it stood when scoring was pre-registered.",
+      "properties": {
+        "id": {
+          "pattern": "^ADG-[0-9]{4}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "path": {
+          "description": "Rule file, relative to the repository root.",
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier"
+        },
+        "version": {
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "tier",
+        "path",
+        "sha256"
+      ],
+      "title": "FrozenRule",
+      "type": "object"
+    },
+    "Split": {
+      "enum": [
+        "dev",
+        "heldout"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "Tier": {
+      "enum": [
+        "content",
+        "sequence",
+        "behavior"
+      ],
+      "title": "Tier",
+      "type": "string"
+    },
+    "TierComparisonPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 0.95,
+          "minimum": 0.95,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "method": {
+          "const": "paired_group_bootstrap_percentile",
+          "title": "Method",
+          "type": "string"
+        },
+        "pairs": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "$ref": "#/$defs/Tier"
+              },
+              {
+                "$ref": "#/$defs/Tier"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Pairs",
+          "type": "array"
+        },
+        "resamples": {
+          "minimum": 1,
+          "title": "Resamples",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "unit": {
+          "const": "variant_group",
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "unit",
+        "pairs",
+        "resamples",
+        "seed",
+        "confidence"
+      ],
+      "title": "TierComparisonPlan",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The frozen pre-registration.",
+  "properties": {
+    "baseline_sidecars": {
+      "description": "Separate baseline files. Empty: fitted values live inside the rule files.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Baseline Sidecars",
+      "type": "array"
+    },
+    "below_floor_classes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Below Floor Classes",
+      "type": "array"
+    },
+    "commands": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Commands",
+      "type": "array"
+    },
+    "content_ref_ks": {
+      "items": {
+        "type": "integer"
+      },
+      "title": "Content Ref Ks",
+      "type": "array"
+    },
+    "coverage": {
+      "$ref": "#/$defs/CoverageThresholds"
+    },
+    "ineffective_classes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Ineffective Classes",
+      "type": "array"
+    },
+    "labels_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Labels Sha256",
+      "type": "string"
+    },
+    "primary_k": {
+      "title": "Primary K",
+      "type": "integer"
+    },
+    "report_path": {
+      "title": "Report Path",
+      "type": "string"
+    },
+    "results_path": {
+      "title": "Results Path",
+      "type": "string"
+    },
+    "rules": {
+      "items": {
+        "$ref": "#/$defs/FrozenRule"
+      },
+      "title": "Rules",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "small_n_below": {
+      "minimum": 1,
+      "title": "Small N Below",
+      "type": "integer"
+    },
+    "split": {
+      "$ref": "#/$defs/Split"
+    },
+    "split_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Split Manifest Sha256",
+      "type": "string"
+    },
+    "tier_comparison": {
+      "$ref": "#/$defs/TierComparisonPlan"
+    },
+    "tooling_commit": {
+      "description": "The commit holding the scorer and this generator.",
+      "pattern": "^[0-9a-f]{40,64}$",
+      "title": "Tooling Commit",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "results_path",
+    "report_path",
+    "split",
+    "tooling_commit",
+    "rules",
+    "baseline_sidecars",
+    "split_manifest_sha256",
+    "labels_sha256",
+    "commands",
+    "ineffective_classes",
+    "below_floor_classes",
+    "content_ref_ks",
+    "primary_k",
+    "small_n_below",
+    "coverage",
+    "tier_comparison"
+  ],
+  "title": "Preregistration",
+  "type": "object"
+}

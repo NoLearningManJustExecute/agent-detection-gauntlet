@@ -27,6 +27,8 @@ from agent_detection_gauntlet.metrics.compute import (
     ScoringInputs,
     build_report,
     check_detections_reproduce,
+    git_provenance,
+    sha256_file,
 )
 from agent_detection_gauntlet.metrics.report import InputRole
 from agent_detection_gauntlet.paths import set_repo_root, shown_path
@@ -35,6 +37,22 @@ from agent_detection_gauntlet.rules.validator import ValidationReport, validate_
 from agent_detection_gauntlet.schema.detection import Detection
 from agent_detection_gauntlet.schema.export import export_schemas, schema_drift
 from agent_detection_gauntlet.schema.labels import LabelSource, Split
+from agent_detection_gauntlet.validation.prereg import (
+    BASELINE_REPORT,
+    BASELINE_RESULTS,
+    PREREG_DOC,
+    PREREG_JSON,
+    RESULTS_ROOT,
+    build_preregistration,
+    dump_preregistration,
+    read_preregistration,
+    read_results,
+    render_preregistration,
+    rule_hash_drift,
+    verify,
+)
+from agent_detection_gauntlet.validation.report import render_results
+from agent_detection_gauntlet.validation.score import score_split, traces_dir
 
 # Rule fixtures: the synthetic traces and the dev split at the default content-reference K.
 DEFAULT_FIXTURES = [Path("datasets/fixtures/traces"), Path("datasets/corpus/dev/k24")]
@@ -178,6 +196,89 @@ def cmd_rules_doc(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_validation_prereg(args: argparse.Namespace) -> int:
+    refuse_output(args.out)
+    refuse_output(args.doc)
+    if args.out.exists():
+        raise GauntletError(f"{shown_path(args.out)} already exists; a registration is frozen")
+    commit, dirty = git_provenance()
+    if commit is None or dirty is not False:
+        raise GauntletError("register from a clean git checkout, so the tooling commit is exact")
+    report = _require_valid_rules(args.rules, args.fixtures)
+    plan = build_preregistration(report.rules, args.corpus, commit)
+    write_text(args.out, dump_preregistration(plan))
+    write_text(args.doc, render_preregistration(plan))
+    print(f"ok: registered {len(plan.rules)} rule(s) -> {shown_path(args.out)}")
+    return 0
+
+
+def cmd_validation_score(args: argparse.Namespace) -> int:
+    if not args.check and args.out is None:
+        raise GauntletError("score needs --out or --check")
+    for output in (args.out, args.detections_dir):
+        if output is not None:
+            refuse_output(output)
+    plan = read_preregistration(args.prereg)
+    split = Split(args.split)
+    report = _require_valid_rules(args.rules, args.fixtures)
+    drift = rule_hash_drift(plan, report.rules)
+    if args.check:
+        golden = read_results(args.results)
+        current = {item.rule.id: sha256_file(item.path) for item in report.rules}
+        if current != {rule.id: rule.sha256 for rule in golden.rules}:
+            print("skipped: rule hashes differ from the golden file, whose rules are historical")
+            return 0
+    if drift:
+        raise GauntletError("rules differ from the pre-registration: " + "; ".join(drift))
+    paths = [traces_dir(args.corpus, split, k) for k in plan.content_ref_ks]
+    command = "validation score --check" if args.check else "validation score"
+    require_clearance(command, paths)
+    scored = score_split(plan, sha256_file(args.prereg), report.rules, args.corpus, split)
+    if args.detections_dir is not None:
+        for k, records in scored.detections.items():
+            write_jsonl(args.detections_dir / f"detections-k{k}.jsonl", records)
+    text = pretty_json(scored.results.model_dump(mode="json"))
+    if args.check:
+        if args.results.read_bytes() != text.encode("utf-8"):
+            print(f"error: {shown_path(args.results)} differs from a fresh score", file=sys.stderr)
+            return 1
+        print("ok: a fresh score is byte-identical to the golden file")
+        return 0
+    write_text(args.out, text)
+    print(f"ok: split {split.value} scored -> {shown_path(args.out)}")
+    return 0
+
+
+def cmd_validation_report(args: argparse.Namespace) -> int:
+    refuse_output(args.out)
+    text = render_results(read_results(args.results), read_preregistration(args.prereg))
+    if args.check:
+        current = args.out.read_bytes().decode("utf-8") if args.out.is_file() else None
+        if current != text:
+            print(f"{shown_path(args.out)} is out of date; run `gauntlet validation report`")
+            return 1
+        print("ok: results report matches the JSON")
+        return 0
+    write_text(args.out, text)
+    print(f"ok: wrote {shown_path(args.out)}")
+    return 0
+
+
+def cmd_validation_verify(args: argparse.Namespace) -> int:
+    report = _require_valid_rules(args.rules, args.fixtures)
+    frozen = args.frozen_prereg.read_bytes() if args.frozen_prereg else None
+    problems = verify(args.prereg, args.doc, args.results_root, report.rules, frozen)
+    for problem in problems:
+        print(f"error: {problem}", file=sys.stderr)
+    if problems:
+        return 1
+    if args.prereg.is_file():
+        print("ok: registration frozen, rule hashes and results agree")
+    else:
+        print("ok: no pre-registration yet and no results")
+    return 0
+
+
 def cmd_corpus_build(args: argparse.Namespace) -> int:
     summary = build_corpus(args.source, args.out, args.salt, args.notes)
     print(
@@ -269,6 +370,43 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", type=Path, default=DEFAULT_DETECTIONS_DOC)
     p.add_argument("--check", action="store_true", help="fail if the doc is out of date")
     p.set_defaults(handler=cmd_rules_doc)
+
+    validation = sub.add_parser("validation", help="pre-register, score and report the baseline")
+    vsub = validation.add_subparsers(dest="validation_command", required=True, metavar="action")
+    v = vsub.add_parser("prereg", help="freeze the rule hashes and the plan, once")
+    v.add_argument("--rules", type=Path, default=DEFAULT_RULES)
+    v.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
+    v.add_argument("--out", type=Path, default=PREREG_JSON)
+    v.add_argument("--doc", type=Path, default=PREREG_DOC)
+    v.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
+    v.set_defaults(handler=cmd_validation_prereg)
+    v = vsub.add_parser("score", help="score a split as registered and write the results")
+    v.add_argument("--rules", type=Path, default=DEFAULT_RULES)
+    v.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
+    v.add_argument("--prereg", type=Path, default=PREREG_JSON)
+    v.add_argument("--split", choices=[split.value for split in Split], default=Split.HELDOUT.value)
+    v.add_argument("--out", type=Path, default=None, help="results file to write")
+    v.add_argument("--results", type=Path, default=BASELINE_RESULTS, help="golden file for --check")
+    v.add_argument("--check", action="store_true", help="fail if a fresh score differs from it")
+    v.add_argument("--detections-dir", type=Path, default=None, help="also write detections here")
+    v.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
+    v.set_defaults(handler=cmd_validation_score)
+    v = vsub.add_parser("report", help="render the results report from the JSON")
+    v.add_argument("--prereg", type=Path, default=PREREG_JSON)
+    v.add_argument("--results", type=Path, default=BASELINE_RESULTS)
+    v.add_argument("--out", type=Path, default=BASELINE_REPORT)
+    v.add_argument("--check", action="store_true", help="fail if the report is out of date")
+    v.set_defaults(handler=cmd_validation_report)
+    v = vsub.add_parser("verify", help="check the registration, rule hashes and results agree")
+    v.add_argument("--rules", type=Path, default=DEFAULT_RULES)
+    v.add_argument("--prereg", type=Path, default=PREREG_JSON)
+    v.add_argument("--doc", type=Path, default=PREREG_DOC)
+    v.add_argument("--results-root", type=Path, default=RESULTS_ROOT)
+    v.add_argument(
+        "--frozen-prereg", type=Path, default=None, help="registration as first committed"
+    )
+    v.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
+    v.set_defaults(handler=cmd_validation_verify)
 
     corpus = sub.add_parser("corpus", help="build, verify or describe the frozen corpus")
     csub = corpus.add_subparsers(dest="corpus_command", required=True, metavar="action")

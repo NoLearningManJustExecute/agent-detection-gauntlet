@@ -109,6 +109,7 @@ Notes:
 | `src/agent_detection_gauntlet/rules/` | Rule model, YAML loader, rule validator |
 | `src/agent_detection_gauntlet/engine/` | Field resolution, conditions, primitives, executor |
 | `src/agent_detection_gauntlet/metrics/` | Rates, Wilson intervals, scoring, report model |
+| `src/agent_detection_gauntlet/validation/` | Pre-registration, held-out scoring, generated report |
 | `src/agent_detection_gauntlet/io/` | Strict JSONL reading, trace and label loading |
 | `src/agent_detection_gauntlet/catalog/` | Mapping ID catalogs for ATLAS, OWASP LLM, OWASP Agentic, ATT&CK |
 | `src/agent_detection_gauntlet/cli.py` | The `gauntlet` command |
@@ -126,6 +127,7 @@ Notes:
 - [docs/rule-format.md](docs/rule-format.md): rule fields, logic grammar, mappings, validator
 - [docs/engine.md](docs/engine.md): exact engine semantics
 - [docs/metrics.md](docs/metrics.md): metric definitions and the report format
+- `gauntlet validation`: pre-register the rule hashes, score the held-out split, render the report
 - [docs/methodology.md](docs/methodology.md): measurement principles and limitations
 - [ROADMAP.md](ROADMAP.md): phases and gates
 - [SECURITY.md](SECURITY.md): security scope and reporting

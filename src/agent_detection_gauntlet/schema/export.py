@@ -13,6 +13,7 @@ from agent_detection_gauntlet.rules.model import Rule
 from agent_detection_gauntlet.schema.detection import Detection
 from agent_detection_gauntlet.schema.labels import LabelRecord
 from agent_detection_gauntlet.schema.trace import TraceEvent
+from agent_detection_gauntlet.validation.model import BaselineResults, Preregistration
 
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
 
@@ -22,6 +23,8 @@ SCHEMA_MODELS: dict[str, tuple[type[BaseModel], str]] = {
     "rule.schema.json": (Rule, "A detection rule (YAML source, validated as JSON)."),
     "detection.schema.json": (Detection, "One line of a detections JSONL file."),
     "metrics-report.schema.json": (MetricsReport, "The metrics report JSON document."),
+    "preregistration.schema.json": (Preregistration, "The frozen pre-registration."),
+    "baseline-results.schema.json": (BaselineResults, "The golden baseline results file."),
 }
 
 

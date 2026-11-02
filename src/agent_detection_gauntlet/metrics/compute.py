@@ -184,13 +184,28 @@ def compute_metrics(
         attack_failed=counts[Outcome.ATTACK_FAILED],
     )
 
-    detected_by_rule: dict[str, set[str]] = {rule.id: set() for rule in inputs.rules}
-    for record in inputs.detections:
-        detected_by_rule[record.rule_id].add(record.trace_id)
+    per_rule, per_tier = score_rules_and_tiers(
+        inputs.rules, outcomes, detected_by_rule(inputs.rules, inputs.detections)
+    )
+    return population, per_rule, per_tier
 
+
+def detected_by_rule(rules: Sequence[Rule], detections: Iterable[Detection]) -> dict[str, set[str]]:
+    """The traces each rule fired on, with an empty set for a rule that never fired."""
+    detected: dict[str, set[str]] = {rule.id: set() for rule in rules}
+    for record in detections:
+        detected[record.rule_id].add(record.trace_id)
+    return detected
+
+
+def score_rules_and_tiers(
+    rules: Sequence[Rule],
+    outcomes: Mapping[str, Outcome],
+    detected: Mapping[str, set[str]],
+) -> tuple[list[RuleMetrics], list[TierMetrics]]:
     per_rule: list[RuleMetrics] = []
-    for rule in sorted(inputs.rules, key=lambda item: item.id):
-        confusion, failed = score(outcomes, detected_by_rule[rule.id])
+    for rule in sorted(rules, key=lambda item: item.id):
+        confusion, failed = score(outcomes, detected[rule.id])
         per_rule.append(
             RuleMetrics(
                 rule_id=rule.id,
@@ -204,11 +219,11 @@ def compute_metrics(
 
     per_tier: list[TierMetrics] = []
     for tier in TIER_ORDER:
-        members = sorted(rule.id for rule in inputs.rules if rule.tier is tier)
+        members = sorted(rule.id for rule in rules if rule.tier is tier)
         if not members:
             continue
-        detected = set().union(*(detected_by_rule[rule_id] for rule_id in members))
-        confusion, failed = score(outcomes, detected)
+        hits: set[str] = set().union(*(detected[rule_id] for rule_id in members))
+        confusion, failed = score(outcomes, hits)
         per_tier.append(
             TierMetrics(
                 tier=tier,
@@ -218,7 +233,7 @@ def compute_metrics(
                 rates=compute_rates(confusion),
             )
         )
-    return population, per_rule, per_tier
+    return per_rule, per_tier
 
 
 def sha256_file(path: Path) -> str:

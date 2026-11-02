@@ -36,8 +36,8 @@ MANIFEST_NAME = "SPLIT_MANIFEST.json"
 LOG_PATH = Path("docs/heldout-log.md")
 LOG_HEADER = (
     "# Held-out access log\n\n"
-    "Appended by `gauntlet scan` and `gauntlet metrics` every time they read held-out data.\n"
-    "Do not edit by hand.\n\n"
+    "Appended by every `gauntlet` command that reads held-out data, before it reads any trace.\n"
+    "Do not edit the rows by hand. CI's regression check logs on its own discarded runner.\n\n"
     "| Time (UTC) | Commit | Command | Inputs |\n"
     "|---|---|---|---|\n"
 )
