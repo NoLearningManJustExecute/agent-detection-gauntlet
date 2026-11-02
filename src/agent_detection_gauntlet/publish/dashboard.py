@@ -213,8 +213,8 @@ def render_dashboard(
             "Read with the table below: recall here is over attacks that still succeeded.</p>",
             _bars(evasion),
             "<h2>Each mutation, by tier</h2>",
-            "<p class='note'>Guardrails off. The base64 rows are null because no attack succeeded: base64 broke "
-            "the attack, it did not evade a rule.</p>",
+            "<p class='note'>Guardrails off. The base64 rows are null because no attack "
+            "succeeded: base64 broke the attack, it did not evade a rule.</p>",
             _evasion_table(evasion),
             "<h2>Clean held-out attacks</h2>",
             f"<p class='note'>{baseline['population']['malicious_succeeded']} succeeded attack "
