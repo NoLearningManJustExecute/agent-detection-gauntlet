@@ -160,3 +160,25 @@ These are known going in. They are reported as measured and are not fixed after 
   justifies. The tier comparison is the group-level figure.
 
 <!-- end of baseline pre-registration -->
+
+## Errata, added after scoring
+
+Everything above the end marker stands as committed before scoring. These notes correct it.
+
+- "No held-out trace was read" and "Only the commands that set `GAUNTLET_SCORING_HELDOUT=1` read
+  held-out data" are too broad. They hold for scoring, rule authoring and human review. CI's
+  `gauntlet validate-traces`, `gauntlet corpus verify`, `gauntlet corpus card` and the leak guard
+  parse held-out files on every run, before registration too. The firewall boundary in
+  [methodology.md](methodology.md) allows this: no attack content is shown, and these runs are not
+  logged.
+- "Fit command and population are recorded in each behavior rule" holds only for ADG-0011 and
+  ADG-0013, the two rules with a fitted baseline. ADG-0012 and ADG-0014 have nothing fitted.
+- "CI fails if this text changes" was weaker than stated at registration: the check compared the
+  document with the rendering template, so editing both would pass. CI now also compares it with
+  the text as first committed.
+- `family_member_in_other_split` is defined above as a group whose parent or sibling is in dev. The
+  scorer also removed authored groups whose seeded child is in dev. That was a bug against this
+  text; see the bug record in [heldout-log.md](heldout-log.md). The broader definition is kept as
+  a separate row marked not registered.
+- The statement that the thresholds were fixed before the dev dry run is the author's. Git cannot
+  confirm the order, since both happened before the tooling commit.

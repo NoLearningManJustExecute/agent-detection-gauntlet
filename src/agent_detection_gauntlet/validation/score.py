@@ -64,6 +64,7 @@ from agent_detection_gauntlet.validation.model import (
 LABELS_FILE = "labels.jsonl"
 ALL_TIERS = "all_tiers"
 OBFUSCATED_SUFFIX = "-OBF"
+ANY_RELATIVE = "any_relative_in_other_split"
 
 
 def traces_dir(corpus: Path, split: Split, k: int) -> Path:
@@ -342,14 +343,31 @@ def _seeded_parent_elsewhere(
     return test
 
 
-def _family_elsewhere(everything: Mapping[str, LabelRecord]) -> Callable[[LabelRecord], bool]:
-    """Stricter: any group whose parent or sibling sits in the other split."""
-    family_splits: dict[str, set[Split | None]] = defaultdict(set)
+def _family_splits(everything: Mapping[str, LabelRecord]) -> dict[str, set[Split | None]]:
+    """The splits holding each family: a parent's group and every group derived from it."""
+    splits: dict[str, set[Split | None]] = defaultdict(set)
     for label in everything.values():
-        family_splits[label.derived_from or group_of(label)].add(label.split)
+        splits[label.derived_from or group_of(label)].add(label.split)
+    return splits
+
+
+def _family_elsewhere(everything: Mapping[str, LabelRecord]) -> Callable[[LabelRecord], bool]:
+    """As registered: a seeded group whose parent or sibling sits in the other split."""
+    splits = _family_splits(everything)
 
     def test(label: LabelRecord) -> bool:
-        return len(family_splits[label.derived_from or group_of(label)]) > 1
+        parent = label.derived_from
+        return bool(parent and parent != group_of(label) and len(splits[parent]) > 1)
+
+    return test
+
+
+def _any_relative_elsewhere(everything: Mapping[str, LabelRecord]) -> Callable[[LabelRecord], bool]:
+    """Broader, not registered: also an authored group with a seeded child in the other split."""
+    splits = _family_splits(everything)
+
+    def test(label: LabelRecord) -> bool:
+        return len(splits[label.derived_from or group_of(label)]) > 1
 
     return test
 
@@ -364,12 +382,15 @@ def _set_aside(
     rules: Sequence[Rule],
     labels: Mapping[str, LabelRecord],
     detected: Mapping[str, set[str]],
+    *,
+    registered: bool = True,
 ) -> SetAside:
     succeeded = {t: x for t, x in labels.items() if outcome_of(x) is Outcome.MALICIOUS_SUCCEEDED}
     removed = [x for x in succeeded.values() if test(x)]
     kept = {t: x for t, x in succeeded.items() if not test(x)}
     return SetAside(
         name=name,
+        registered=registered,
         set_aside_traces=len(removed),
         set_aside_groups=_groups(removed),
         remaining_groups=_groups(kept.values()),
@@ -470,6 +491,14 @@ def score_split(
             detected,
         ),
         _set_aside("authored_obfuscated_twin", _obfuscated, rules, effective, detected),
+        _set_aside(
+            ANY_RELATIVE,
+            _any_relative_elsewhere(everything),
+            rules,
+            effective,
+            detected,
+            registered=False,
+        ),
     ]
 
     return Scored(

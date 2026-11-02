@@ -15,6 +15,7 @@ from agent_detection_gauntlet.validation.model import (
     RecallTable,
     Section,
 )
+from agent_detection_gauntlet.validation.score import ANY_RELATIVE
 
 
 def _table(header: Sequence[str], rows: Iterable[Sequence[object]]) -> str:
@@ -133,6 +134,17 @@ def _provenance_rows(results: BaselineResults) -> list[list[object]]:
     return rows
 
 
+def _relative_note(results: BaselineResults) -> list[str]:
+    total = results.population.malicious_succeeded_groups
+    return [
+        f"{item.set_aside_groups} of {total} succeeded groups have a parent, sibling or seeded "
+        "child in the other split, so higher recall in a row here is not evidence against "
+        "inflation from those relatives.\n"
+        for item in results.set_asides
+        if item.name == ANY_RELATIVE
+    ]
+
+
 def _summary(results: BaselineResults) -> list[str]:
     population = results.population
     all_tiers = results.pooled.all_tiers.rates
@@ -169,19 +181,22 @@ LIMITATIONS = [
     "**Single-author corpus.** One author wrote the attacks, the benign tasks and the rules. The "
     "split guards against fitting to specific traces, not against a shared view of what attacks "
     "look like.",
-    "**Variant-group splits.** Whole groups go to one split, but seeded groups can sit across the "
-    "split from their parent or siblings, which share the attack's mechanism and target. The "
-    "set-aside table shows how much that matters here.",
+    "**Variant-group splits.** Whole groups go to one split, but a group's parent, siblings or "
+    "seeded children can sit across the split, and they share the attack's mechanism and target. "
+    "The set-aside table states how many held-out groups this touches. It cannot measure what "
+    "that does to recall, because rules were written against the dev relatives of those groups.",
     "**Overlap-based provenance.** Content references come from verbatim overlap of at least K "
     "characters. Paraphrased data flow is missed. The sensitivity table shows the K dependence.",
-    "**Temperature-0 determinism.** Repeated runs of one input are identical, so distinct inputs "
-    "are the unit of independence. Wilson intervals treat traces as independent and run narrower "
-    "than the group structure justifies; the group count sits beside them.",
+    "**Temperature-0 determinism.** Runs of one input mostly repeat, and repeats are removed, so "
+    "more runs would not add independent evidence; a few inputs do produce more than one distinct "
+    "trace. Distinct inputs are the unit of independence. Wilson intervals treat traces as "
+    "independent and run narrower than the group structure justifies; the group count sits beside "
+    "them.",
     "**Small samples.** Few groups per class, and few successes with guardrails on. Per-class and "
     "guardrails-on figures are wide and are read as such.",
     "**Precision depends on the corpus mix.** The share of attacks here is a property of the "
     "corpus, not of any deployment.",
-    "**Rules are unverified against primary sources for framework mappings** until Phase 7.",
+    "**Framework mappings are unverified** against primary sources until Phase 7.",
 ]
 
 
@@ -270,14 +285,14 @@ def render_results(results: BaselineResults, plan: Preregistration) -> str:
         "feeds pooled metrics only.",
         "",
         _table(
-            ["Class", "N traces", "N groups", *tier_names, "Flags"],
+            ["Class", "Succeeded traces", "Succeeded groups", *tier_names, "Flags"],
             _class_rows(results),
         ),
         "",
         "Rules that fired on a class, with counts over its succeeded traces. Every rule and every "
         "interval is in the JSON.",
         "",
-        _table(["Class", "N traces", "Rules with hits"], _class_rule_rows(results)),
+        _table(["Class", "Succeeded traces", "Rules with hits"], _class_rule_rows(results)),
         "",
         "## attack_failed bucket",
         "",
@@ -302,13 +317,23 @@ def render_results(results: BaselineResults, plan: Preregistration) -> str:
         "",
         "## Set-aside sensitivity",
         "",
-        "Recall with some succeeded traces removed. Null means nothing was left to score.",
+        "Recall with some succeeded traces removed. Null means nothing was left to score. Groups "
+        "touched counts groups that lost at least one trace; a group can lose some traces and keep "
+        "others. A row marked not registered was added after scoring and is not part of the "
+        "registered analysis.",
         "",
+        *_relative_note(results),
         _table(
-            ["Set aside", "Traces removed", "Groups removed", "Groups left", *tier_names],
+            [
+                "Set aside",
+                "Traces removed",
+                "Groups touched",
+                "Groups with traces left",
+                *tier_names,
+            ],
             [
                 [
-                    item.name,
+                    item.name if item.registered else f"{item.name} (not registered)",
                     item.set_aside_traces,
                     item.set_aside_groups,
                     item.remaining_groups,

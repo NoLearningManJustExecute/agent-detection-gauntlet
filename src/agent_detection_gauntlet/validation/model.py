@@ -210,6 +210,7 @@ class SetAside(BaseModel):
     model_config = STRICT_MODEL
 
     name: str
+    registered: bool = Field(description="False for a row added after scoring.")
     set_aside_traces: Count
     set_aside_groups: Count
     remaining_groups: Count

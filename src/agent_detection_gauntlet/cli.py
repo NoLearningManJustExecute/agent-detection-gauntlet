@@ -267,7 +267,11 @@ def cmd_validation_report(args: argparse.Namespace) -> int:
 def cmd_validation_verify(args: argparse.Namespace) -> int:
     report = _require_valid_rules(args.rules, args.fixtures)
     frozen = args.frozen_prereg.read_bytes() if args.frozen_prereg else None
-    problems = verify(args.prereg, args.doc, args.results_root, report.rules, frozen)
+    frozen_doc = args.frozen_doc.read_bytes() if args.frozen_doc else None
+    base_results = args.base_results.read_bytes() if args.base_results else None
+    problems = verify(
+        args.prereg, args.doc, args.results_root, report.rules, frozen, frozen_doc, base_results
+    )
     for problem in problems:
         print(f"error: {problem}", file=sys.stderr)
     if problems:
@@ -406,6 +410,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--frozen-prereg", type=Path, default=None, help="registration as first committed"
     )
     v.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
+    v.add_argument("--frozen-doc", type=Path, default=None, help="its text as first committed")
+    v.add_argument("--base-results", type=Path, default=None, help="golden file on the base")
     v.set_defaults(handler=cmd_validation_verify)
 
     corpus = sub.add_parser("corpus", help="build, verify or describe the frozen corpus")

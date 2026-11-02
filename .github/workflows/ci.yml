@@ -253,16 +253,37 @@ jobs:
         run: python -m pip install -e ".[dev]"
       # The registration must equal the commit that first added it, and results must name its
       # hashes. Before a registration exists this only checks that no results exist either.
+      # Once one is on the base it may not be deleted, and neither may the golden file.
       - name: Pre-registration frozen, results reference its rule hashes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
           prereg=docs/preregistration.json
+          doc=docs/preregistration.md
+          golden=results/baseline/metrics.json
+          base="$PUSH_BEFORE"
+          if [ "$EVENT" = "pull_request" ]; then base="origin/$BASE_REF"; fi
+          for file in "$prereg" "$golden"; do
+            if [ ! -f "$file" ] && git cat-file -e "$base:$file" 2>/dev/null; then
+              echo "::error::$file exists on the base and may not be deleted"
+              exit 1
+            fi
+          done
+          args=()
           if [ -f "$prereg" ]; then
             first=$(git log --diff-filter=A --format=%H -- "$prereg" | tail -n 1)
             git show "$first:$prereg" > "$RUNNER_TEMP/frozen-prereg.json"
-            gauntlet validation verify --frozen-prereg "$RUNNER_TEMP/frozen-prereg.json"
-          else
-            gauntlet validation verify
+            git show "$first:$doc" > "$RUNNER_TEMP/frozen-prereg.md"
+            args+=(--frozen-prereg "$RUNNER_TEMP/frozen-prereg.json")
+            args+=(--frozen-doc "$RUNNER_TEMP/frozen-prereg.md")
           fi
+          if git cat-file -e "$base:$golden" 2>/dev/null; then
+            git show "$base:$golden" > "$RUNNER_TEMP/base-results.json"
+            args+=(--base-results "$RUNNER_TEMP/base-results.json")
+          fi
+          gauntlet validation verify "${args[@]}"
       # The only CI step that reads the held-out split, and only once a golden file exists. Its
       # log row lands on this runner and is discarded. The step prints no trace content.
       - name: Re-score and compare with the golden file

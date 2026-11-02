@@ -333,16 +333,39 @@ def test_family_set_aside_takes_a_child_whose_parent_is_across_the_split(project
     assert (item.set_aside_traces, item.set_aside_groups) == (2, 1)
 
 
-def test_family_set_aside_takes_a_parent_whose_child_is_across_the_split(project: Path) -> None:
+def _add_labels(project: Path, *extra: dict[str, Any]) -> None:
     corpus = project / "datasets" / "corpus"
     labels = (corpus / "labels.jsonl").read_text(encoding="utf-8").splitlines()
-    child = _label("d3", "C3", split="dev", attack_class="AC02", derived_from="A3")
-    write_text(corpus / "labels.jsonl", "\n".join([*labels, json.dumps(child)]) + "\n")
+    lines = [*labels, *(json.dumps(item) for item in extra)]
+    write_text(corpus / "labels.jsonl", "\n".join(lines) + "\n")
+
+
+def _row(results: BaselineResults, name: str) -> Any:
+    return next(item for item in results.set_asides if item.name == name)
+
+
+def test_family_set_aside_leaves_a_parent_whose_child_is_across_the_split(project: Path) -> None:
+    _add_labels(project, _label("d3", "C3", split="dev", attack_class="AC02", derived_from="A3"))
     results = _score(project)
-    family = next(x for x in results.set_asides if x.name == "family_member_in_other_split")
-    assert (family.set_aside_traces, family.set_aside_groups) == (4, 2)
-    # The card's narrower definition looks only at seeded groups, so A3 stays there.
-    seeded = next(x for x in results.set_asides if x.name == "seeded_group_parent_in_other_split")
+    # A3 is authored, so the registered wording keeps it. Only the unregistered row removes it.
+    family = _row(results, "family_member_in_other_split")
+    assert (family.set_aside_traces, family.set_aside_groups) == (2, 1)
+    assert family.registered
+    broad = _row(results, "any_relative_in_other_split")
+    assert (broad.set_aside_traces, broad.set_aside_groups) == (4, 2)
+    assert not broad.registered
+
+
+def test_family_set_aside_takes_a_child_whose_sibling_is_across_the_split(project: Path) -> None:
+    # A2's parent P2 is held-out, but its sibling C2 is in dev.
+    results = _score(project)
+    assert _row(results, "family_member_in_other_split").set_aside_traces == 2
+    _add_labels(project, _label("d3", "C2", split="dev", attack_class="AC01", derived_from="P2"))
+    results = _score(project)
+    family = _row(results, "family_member_in_other_split")
+    assert (family.set_aside_traces, family.set_aside_groups) == (3, 2)
+    # The card's narrower definition looks only at the parent, so A2 stays there.
+    seeded = _row(results, "seeded_group_parent_in_other_split")
     assert (seeded.set_aside_traces, seeded.set_aside_groups) == (2, 1)
 
 
@@ -586,7 +609,12 @@ def test_drift_names_each_kind_of_change(project: Path) -> None:
     ]
 
 
-def _verify(project: Path, frozen: bytes | None = None) -> list[str]:
+def _verify(
+    project: Path,
+    frozen: bytes | None = None,
+    frozen_doc: bytes | None = None,
+    base_results: bytes | None = None,
+) -> list[str]:
     docs = project / "docs"
     return verify(
         docs / "preregistration.json",
@@ -594,6 +622,8 @@ def _verify(project: Path, frozen: bytes | None = None) -> list[str]:
         project / "results",
         _loaded(project),
         frozen,
+        frozen_doc,
+        base_results,
     )
 
 
@@ -637,6 +667,44 @@ def test_verify_fails_when_the_registration_moved_from_its_first_commit(project:
     assert "changed after" in _verify(project, frozen + b" ")[0]
 
 
+def test_verify_compares_the_doc_with_its_first_commit_and_allows_appending(project: Path) -> None:
+    _register(project)
+    doc = project / "docs" / "preregistration.md"
+    frozen_doc = doc.read_bytes()
+    doc.write_bytes(frozen_doc + b"\n## Errata\n")
+    assert _verify(project, frozen_doc=frozen_doc) == []
+    assert "changed text" in _verify(project, frozen_doc=frozen_doc + b"x")[0]
+
+
+def test_verify_holds_the_golden_file_still_once_rules_moved_on(project: Path) -> None:
+    results = _score(project)
+    path = _write_results(project, results)
+    base = path.read_bytes()
+    assert _verify(project, base_results=base) == []
+    # Rules unchanged: a re-score guards the golden file, so a change here is left to it.
+    path.write_bytes(base + b" ")
+    assert _verify(project, base_results=base) == []
+    rule = project / "rules" / "ADG-0101.yaml"
+    rule.write_text(rule.read_text(encoding="utf-8").replace("1.0.0", "1.0.1"), encoding="utf-8")
+    assert "changed while the rules differ" in _verify(project, base_results=base)[0]
+    path.write_bytes(base)
+    assert _verify(project, base_results=base) == []
+    path.unlink()
+    assert "changed while the rules differ" in _verify(project, base_results=base)[0]
+
+
+def test_cli_verify_reads_the_frozen_inputs(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    results = _score(project)
+    path = _write_results(project, results)
+    args = ["validation", "verify", "--fixtures", "fx"]
+    args += ["--frozen-prereg", "docs/preregistration.json"]
+    args += ["--frozen-doc", "docs/preregistration.md", "--base-results", str(path)]
+    assert main(args) == 0
+    assert "agree" in capsys.readouterr().out
+
+
 def test_verify_fails_on_a_rule_edit_without_a_bump_and_allows_a_bump(project: Path) -> None:
     _register(project)
     rule = project / "rules" / "ADG-0101.yaml"
@@ -671,6 +739,8 @@ def test_report_is_generated_from_the_json_and_clean(project: Path) -> None:
     assert "2/5 = 0.400" in text
     assert "null (0/0)" in text
     assert "seeded_group_parent_in_other_split" in text
+    assert "any_relative_in_other_split (not registered)" in text
+    assert "1 of 3 succeeded groups have a parent, sibling or seeded child" in text
     assert "small-N" in text
     assert "underpowered" in text
     for forbidden in (chr(0x2013), chr(0x2014), str(project)):

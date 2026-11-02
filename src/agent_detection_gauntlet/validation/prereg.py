@@ -162,6 +162,8 @@ def verify(
     results_root: Path,
     loaded: Sequence[LoadedRule],
     frozen: bytes | None = None,
+    frozen_doc: bytes | None = None,
+    base_results: bytes | None = None,
 ) -> list[str]:
     """Everything CI enforces about the registration. Returns the problems found."""
     results = _results_files(results_root)
@@ -175,6 +177,18 @@ def verify(
     doc = doc_path.read_bytes().decode("utf-8") if doc_path.is_file() else ""
     if not doc.startswith(render_preregistration(plan)):
         problems.append(f"{shown_path(doc_path)} does not start with the rendered pre-registration")
+    if frozen_doc is not None and not doc.encode("utf-8").startswith(frozen_doc):
+        problems.append(f"{shown_path(doc_path)} changed text that was first committed")
+    golden = results_root / "baseline" / RESULTS_FILE
+    # Re-scoring is skipped once rules have moved on, so the golden file must not move either.
+    if (
+        base_results is not None
+        and rule_hash_drift(plan, loaded)
+        and (not golden.is_file() or golden.read_bytes() != base_results)
+    ):
+        problems.append(
+            f"{shown_path(golden)} changed while the rules differ from the registration"
+        )
     registered = {rule.id: rule for rule in plan.rules}
     # A bumped version is allowed here: its results go to a new directory. An edit is not.
     for item in loaded:

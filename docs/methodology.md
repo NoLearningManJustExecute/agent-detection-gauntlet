@@ -50,7 +50,10 @@ would not have.
   read the split for CI's schema and freeze checks. Manifest and label parsing and lint also read
   it. Folder names alone carry no attack content.
 - Known limits of the command-line checks: a deleted manifest disables copy detection, and an
-  edited copy no longer matches its pinned hash; path checks still apply.
+  edited copy no longer matches its pinned hash; path checks still apply. `gauntlet scan` and
+  `gauntlet metrics` with the variable set read held-out data without asking for a registration
+  (the run is still logged), and `gauntlet validation score --prereg` accepts any valid file;
+  `gauntlet validation verify` is what ties committed results to the frozen registration.
 - Behavior thresholds are fitted by code on dev benign traces only, and the fit command is
   recorded in the rule. See [engine.md](engine.md#baseline).
 

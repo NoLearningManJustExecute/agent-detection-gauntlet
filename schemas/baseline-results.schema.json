@@ -807,6 +807,11 @@
           "title": "Name",
           "type": "string"
         },
+        "registered": {
+          "description": "False for a row added after scoring.",
+          "title": "Registered",
+          "type": "boolean"
+        },
         "remaining_groups": {
           "minimum": 0,
           "title": "Remaining Groups",
@@ -828,6 +833,7 @@
       },
       "required": [
         "name",
+        "registered",
         "set_aside_traces",
         "set_aside_groups",
         "remaining_groups",

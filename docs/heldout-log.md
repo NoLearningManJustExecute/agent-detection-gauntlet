@@ -1,7 +1,9 @@
 # Held-out access log
 
-Appended by every `gauntlet` command that reads held-out data, before it reads any trace.
-Do not edit the rows by hand. CI's regression check logs on its own discarded runner.
+Appended by every `gauntlet` command that scores held-out data, before it reads any trace.
+Integrity tooling that only parses the split is not logged; see methodology.md.
+Do not edit the rows by hand. Bug records go above the table. CI's regression check logs on
+its own discarded runner.
 
 | Time (UTC) | Commit | Command | Inputs |
 |---|---|---|---|
