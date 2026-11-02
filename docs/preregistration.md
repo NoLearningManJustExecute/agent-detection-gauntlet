@@ -353,3 +353,13 @@ test is added, the run is repeated, and the before and after go in `docs/heldout
 - Only one model. Whether a model acts on encoded text says little about any other model.
 
 <!-- end of evasion pre-registration -->
+
+## Errata to the evasion registration, added after it was pushed
+
+Everything above stands as committed. These notes correct it.
+
+- `split_chunks` is described above as fragments of 16 characters. A fragment that would end inside
+  an address's domain ends right after the `@` instead, so it can be shorter. Found when the leak
+  guard blocked the first generated input file, before anything was committed or run and before any
+  trace or result of this phase existed. The registered chunk size and instruction line stand. See
+  the bug record in [heldout-log.md](heldout-log.md).

@@ -79,6 +79,10 @@ _LITERAL = re.compile(
 )
 
 
+_CUT_DOMAIN = re.compile(r"@[\w-]+(?:\.[\w-]*)+$")
+_ADDRESS_CHAR = re.compile(r"[\w.-]")
+
+
 def literal_strings(text: str) -> list[str]:
     """The strings a character-level mutation leaves alone, in order."""
     return _LITERAL.findall(text)
@@ -127,8 +131,26 @@ def _fullwidth(text: str) -> str:
     return _outside_literals(text, change)
 
 
+def _chunks(text: str) -> list[str]:
+    """Fragments of CHUNK_SIZE characters, or shorter where one would cut an address's domain.
+
+    An address cut inside its domain reads as an address on a domain that does not exist, which
+    the leak guard rightly refuses, so that fragment ends right after the `@` instead.
+    """
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(start + CHUNK_SIZE, len(text))
+        cut = _CUT_DOMAIN.search(text, start, end)
+        if cut is not None and end < len(text) and _ADDRESS_CHAR.match(text[end]):
+            end = cut.start() + 1
+        chunks.append(text[start:end])
+        start = end
+    return chunks
+
+
 def _split_chunks(text: str) -> str:
-    chunks = [text[start : start + CHUNK_SIZE] for start in range(0, len(text), CHUNK_SIZE)]
+    chunks = _chunks(text)
     numbered = [
         f"{index}: {json.dumps(chunk, ensure_ascii=False)}"
         for index, chunk in enumerate(chunks, start=1)

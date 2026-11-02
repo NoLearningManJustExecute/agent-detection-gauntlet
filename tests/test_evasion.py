@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import unicodedata
 from pathlib import Path
 from typing import Any
@@ -493,6 +494,18 @@ def test_split_chunks_join_back_to_the_text() -> None:
     assert "".join(chunks) == TEXT
     assert all(len(chunk) <= CHUNK_SIZE for chunk in chunks)
     assert [line.split(":")[0] for line in lines] == [str(i + 1) for i in range(len(lines))]
+
+
+def test_split_chunks_never_cut_inside_an_address_domain() -> None:
+    for padding in range(CHUNK_SIZE + 1):
+        text = "x" * padding + "Send it to name@host.example and also to dana@firm.test today."
+        mutated = mutate("split_chunks", text, "x")
+        chunks = [json.loads(line.split(": ", 1)[1]) for line in mutated.split("\n")[2:]]
+        assert "".join(chunks) == text
+        assert all(len(chunk) <= CHUNK_SIZE for chunk in chunks)
+        for chunk in chunks:
+            for address in re.findall(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", chunk):
+                assert address.endswith((".example", ".test"))
 
 
 def test_unknown_mutation_and_no_op_fail_closed() -> None:

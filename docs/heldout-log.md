@@ -21,6 +21,15 @@ its own discarded runner.
   of `results/baseline/metrics.json` is identical before and after, including all pooled, per-class,
   guardrail, provenance and tier-comparison numbers.
 
+**2. `split_chunks` cut lab addresses inside their domain.**
+
+- Bug: a 16-character fragment could end inside an address's domain, which reads as an address on
+  a domain that does not exist. The leak guard blocked 6 such lines in the first
+  generated input file, which was never committed, pushed or run. No trace or result existed.
+- Fix: mutation tooling only, with a test. A fragment that would cut a domain ends right after the
+  `@`. No rule changed. See the erratum in preregistration.md.
+- Before and after: no metric existed before. The second `evasion mutate` row below is the rerun.
+
 ## Access log
 
 | Time (UTC) | Commit | Command | Inputs |
@@ -29,3 +38,5 @@ its own discarded runner.
 | 2026-11-02T15:47:41Z | 39ec151f2409 | validation score --check | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48 |
 | 2026-11-02T16:02:41Z | 63cc20c936a7 | validation score | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48 |
 | 2026-11-02T16:03:07Z | 63cc20c936a7 | validation score --check | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48 |
+| 2026-11-02T18:00:19Z | cad51af5fa53 | evasion mutate | split heldout of the corpus labels |
+| 2026-11-02T18:02:26Z | cad51af5fa53 | evasion mutate | split heldout of the corpus labels |
