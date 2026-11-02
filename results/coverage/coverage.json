@@ -97,7 +97,7 @@
     },
     {
       "path": "src/agent_detection_gauntlet/catalog/attack_classes.yaml",
-      "sha256": "21b39952ad8302adb18e4ee584adef6a6cf383eafd9b7e36df2a9ae9f35ef430"
+      "sha256": "b404b631110c990ba3709ea5ab6b093a80b037862c73fb19cbb990e45917ffdb"
     }
   ],
   "populations": [
@@ -497,6 +497,7 @@
           "tier": "behavior"
         }
       ],
+      "small_n": false,
       "source": "results/baseline/metrics.json: pooled.per_rule, both guardrail arms",
       "succeeded_by_class": {
         "AC01": 3,
@@ -908,6 +909,7 @@
           "tier": "behavior"
         }
       ],
+      "small_n": false,
       "source": "results/evasion/evasion.json: all_payload_mutations, guardrails off; FPR from benign_fpr, the same held-out benign traces, not mutated",
       "succeeded_by_class": {
         "AC01": 10,
@@ -1318,6 +1320,7 @@
           "tier": "behavior"
         }
       ],
+      "small_n": true,
       "source": "results/evasion/evasion.json: all_attack_variants, guardrails off; FPR from benign_fpr, the same held-out benign traces, not mutated",
       "succeeded_by_class": {
         "AC01": 0,
@@ -1416,6 +1419,7 @@
     }
   ],
   "schema_version": "1.0",
+  "small_n_below": 10,
   "techniques": [
     {
       "classes": [
@@ -1548,7 +1552,7 @@
           "covering_rules": [],
           "own_succeeded_traces": 0,
           "population": "attack_variants",
-          "reason": "no_successful_attacks"
+          "reason": "not_attempted"
         }
       ],
       "verified": false
@@ -2012,7 +2016,7 @@
           "covering_rules": [],
           "own_succeeded_traces": 0,
           "population": "attack_variants",
-          "reason": "no_successful_attacks"
+          "reason": "not_attempted"
         }
       ],
       "verified": false
@@ -2364,7 +2368,7 @@
           "covering_rules": [],
           "own_succeeded_traces": 0,
           "population": "attack_variants",
-          "reason": "no_successful_attacks"
+          "reason": "not_attempted"
         }
       ],
       "verified": false
@@ -2628,7 +2632,7 @@
           "covering_rules": [],
           "own_succeeded_traces": 0,
           "population": "attack_variants",
-          "reason": "no_successful_attacks"
+          "reason": "not_attempted"
         }
       ],
       "verified": false
@@ -3551,7 +3555,7 @@
           "covering_rules": [],
           "own_succeeded_traces": 0,
           "population": "attack_variants",
-          "reason": "no_successful_attacks"
+          "reason": "not_attempted"
         }
       ],
       "verified": false

@@ -1,6 +1,7 @@
 """Phase 5 coverage. Verdict logic on hand-made populations, then the frozen golden files.
 
-No test reads a held-out trace: coverage reads rule files and golden results only.
+No test reads a held-out trace: coverage reads rule files, golden results and, to validate the
+rules, their dev and fixture traces.
 """
 
 from __future__ import annotations
@@ -30,11 +31,14 @@ from agent_detection_gauntlet.coverage.model import (
     Reason,
     RuleEvidence,
 )
+from agent_detection_gauntlet.coverage.report import render_coverage
 from agent_detection_gauntlet.errors import GauntletError
 from agent_detection_gauntlet.evasion.model import EvasionResults
 from agent_detection_gauntlet.metrics.compute import make_rate, sha256_file
 from agent_detection_gauntlet.rules.loader import LoadedRule, load_rule_file, rule_files
 from agent_detection_gauntlet.schema.common import Tier
+from agent_detection_gauntlet.schema.labels import Split
+from agent_detection_gauntlet.validation.model import CoverageThresholds
 from agent_detection_gauntlet.validation.prereg import (
     BASELINE_RESULTS,
     PREREG_JSON,
@@ -65,6 +69,7 @@ def population(*rules: RuleEvidence, by_class: dict[str, int] | None = None) -> 
         succeeded_traces=10,
         succeeded_groups=5,
         succeeded_by_class=by_class if by_class is not None else {"AC01": 10},
+        small_n=False,
         rules=list(rules),
     )
 
@@ -120,6 +125,13 @@ def test_no_own_successes_here_is_not_covered() -> None:
     assert not verdict.covered
     assert verdict.own_succeeded_traces == 0
     assert verdict.reason is Reason.NO_SUCCESSFUL_ATTACKS
+
+
+def test_a_class_never_run_here_reads_not_attempted() -> None:
+    table = population(evidence("ADG-0001", 9, 10), by_class={"AC01": 10})
+    verdict = _verdict(table, ["ADG-0001"], ["AC05"], False)
+    assert not verdict.covered
+    assert verdict.reason is Reason.NOT_ATTEMPTED
 
 
 def test_no_class_tie_is_judged_on_the_pooled_rows() -> None:
@@ -184,6 +196,13 @@ def test_class_map_refuses_unknown_keys_and_bad_yaml() -> None:
         "We have coverage of LLM06 now.",
         "Coverage: ASI02",
         "AML.T0051.001\nis covered",
+        "AML.T0051.000 is not only covered",
+        "With no gaps at all, coverage of LLM01 is complete.",
+        "Without any doubt LLM03 is covered.",
+        "LLM01 has never had better coverage",
+        "LLM03 is not covered but coverage of LLM01 is fine.",
+        "llm01 is covered",
+        "ASI04 covers it",
     ],
 )
 def test_a_claim_next_to_an_id_is_found(text: str) -> None:
@@ -199,6 +218,9 @@ def test_a_claim_next_to_an_id_is_found(text: str) -> None:
         "Test coverage is 99 percent.",
         "The word covered with no technique.",
         "XAML.T0053 is covered, and Tool1005 is covered.",
+        "LLM01 lacks coverage",
+        "LLM01 isn\u2019t covered",
+        "LLM01 does not have coverage",
     ],
 )
 def test_no_claim_is_found(text: str) -> None:
@@ -223,16 +245,44 @@ def test_unsupported_claim_fails_and_a_supported_one_passes(tmp_path: Path) -> N
     assert [item.technique for item in unsupported_claims([doc], _report(True))] == ["LLM99"]
 
 
-def test_scan_takes_top_level_and_docs_but_not_the_generated_doc(tmp_path: Path) -> None:
-    (tmp_path / "docs" / "deep").mkdir(parents=True)
-    (tmp_path / "README.md").write_text("x", encoding="utf-8")
-    (tmp_path / "docs" / "a.md").write_text("x", encoding="utf-8")
-    (tmp_path / "docs" / "deep" / "b.md").write_text("x", encoding="utf-8")
-    generated = tmp_path / "docs" / "coverage.md"
-    generated.write_text("x", encoding="utf-8")
-    names = [path.name for path in docs_to_scan(tmp_path, generated)]
-    assert names == ["README.md", "a.md", "b.md"]
-    assert docs_to_scan(tmp_path / "missing", generated) == []
+def test_a_claim_must_name_the_only_column_that_supports_it(tmp_path: Path) -> None:
+    report = build_coverage(real_inputs())
+    doc = tmp_path / "claim.md"
+    doc.write_text("LLM06 is covered on clean held-out attacks, in every column.\n", "utf-8")
+    assert [item.technique for item in unsupported_claims([doc], report)] == ["LLM06"]
+    doc.write_text("LLM06 is covered under payload mutations.\n", "utf-8")
+    assert [item.technique for item in unsupported_claims([doc], report)] == ["LLM06"]
+    doc.write_text("LLM06 is covered under attack variants, on 5 traces.\n", "utf-8")
+    assert unsupported_claims([doc], report) == []
+
+
+def test_scan_takes_every_markdown_file_but_not_the_generated_doc(tmp_path: Path) -> None:
+    for name in (
+        "README.md",
+        "CHANGELOG.md",
+        "docs/a.md",
+        "docs/deep/b.md",
+        "tools/LEAK_GUARD.md",
+        "datasets/fixtures/README.md",
+        "docs/coverage.md",
+        ".venv/skip.md",
+        "out/skip.md",
+        "datasets/corpus/heldout/skip.md",
+        "datasets/evasion/skip.md",
+    ):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x", encoding="utf-8")
+    found = docs_to_scan(tmp_path, tmp_path / "docs" / "coverage.md")
+    assert sorted(path.relative_to(tmp_path).as_posix() for path in found) == [
+        "CHANGELOG.md",
+        "README.md",
+        "datasets/fixtures/README.md",
+        "docs/a.md",
+        "docs/deep/b.md",
+        "tools/LEAK_GUARD.md",
+    ]
+    assert docs_to_scan(tmp_path / "missing", tmp_path / "docs" / "coverage.md") == []
 
 
 def test_claims_command_fails_on_an_unsupported_claim(tmp_path: Path) -> None:
@@ -240,6 +290,9 @@ def test_claims_command_fails_on_an_unsupported_claim(tmp_path: Path) -> None:
     argv = ["coverage", "claims", "--root-dir", str(tmp_path)]
     assert main(argv) == 1
     assert main(["coverage", "claims", "--results", str(tmp_path / "none.json")]) == 1
+    bad = tmp_path / "bad.json"
+    bad.write_text("{}\n", encoding="utf-8")
+    assert main(["coverage", "claims", "--results", str(bad)]) == 1
 
 
 # The frozen results
@@ -268,9 +321,26 @@ def _verdicts(report: CoverageReport, name: str) -> dict[str, Any]:
 
 
 def test_thresholds_come_from_the_registration() -> None:
-    report = build_coverage(real_inputs())
+    inputs = real_inputs()
+    report = build_coverage(inputs)
     assert report.thresholds.min_heldout_recall == 0.5
     assert report.thresholds.max_fpr == 0.05
+    # The verdict follows the registered values, not a copy of them in the code.
+    lowered = inputs.plan.model_copy(
+        update={"coverage": CoverageThresholds(min_heldout_recall=0.25, max_fpr=0.05)}
+    )
+    moved = build_coverage(replace(inputs, plan=lowered))
+    assert _verdicts(moved, "clean_heldout")["AML.T0053"].covered
+    blocked = inputs.plan.model_copy(
+        update={"coverage": CoverageThresholds(min_heldout_recall=0.5, max_fpr=0.0)}
+    )
+    moved = build_coverage(replace(inputs, plan=blocked))
+    assert _verdicts(moved, "attack_variants")["AML.T0053"].covered
+    strict = inputs.plan.model_copy(
+        update={"coverage": CoverageThresholds(min_heldout_recall=0.0, max_fpr=0.0)}
+    )
+    moved = build_coverage(replace(inputs, plan=strict))
+    assert _verdicts(moved, "clean_heldout")["LLM01"].covered
 
 
 def test_every_mapped_technique_has_a_row_and_three_verdicts() -> None:
@@ -348,6 +418,73 @@ def test_attacked_without_rule_lists_ids_outside_the_catalog() -> None:
     assert rows["AML.T0086"].clean_succeeded_traces == 0
 
 
+CLASS_MAP_TABLE = {
+    "AC01": (["AML.T0053"], ["LLM06"], ["ASI02"], []),
+    "AC02": (["AML.T0053"], ["LLM06"], ["ASI02", "ASI03"], ["AML.T0085.001"]),
+    "AC03": (["AML.T0053"], ["LLM06"], ["ASI02"], []),
+    "AC04": ([], [], ["ASI01"], ["AML.T0056", "LLM08:2026"]),
+    "AC05": (["AML.T0051.000", "AML.T0054"], ["LLM01"], ["ASI01"], []),
+    "AC06": (["AML.T0053"], ["LLM06"], ["ASI02"], []),
+    "AC07": (["AML.T0053"], ["LLM06"], [], ["ASI09"]),
+    "AC09": (["AML.T0051.001"], ["LLM01"], ["ASI01"], []),
+    "AC10": ([], ["LLM02"], ["ASI03"], ["AML.T0086"]),
+    "AC11": ([], ["LLM03"], ["ASI04"], ["AML.T0011.002", "AML.T0115.002"]),
+    "AC12A": ([], ["LLM03"], ["ASI04"], ["AML.T0110", "AML.T0115.002"]),
+    "AC12B": ([], ["LLM03"], ["ASI04"], ["AML.T0110", "AML.T0115.002"]),
+}
+
+
+def test_class_map_matches_the_table_read_from_the_source_threat_model() -> None:
+    classes = load_class_map(load_catalog()).classes
+    assert set(classes) == set(CLASS_MAP_TABLE)
+    for name, (atlas, owasp_llm, owasp_agentic, outside) in CLASS_MAP_TABLE.items():
+        entry = classes[name]
+        assert entry.atlas == atlas, name
+        assert entry.owasp_llm == owasp_llm, name
+        assert entry.owasp_agentic == owasp_agentic, name
+        assert entry.attack == [], name
+        assert entry.not_in_catalog == outside, name
+
+
+def test_catalog_id_filed_under_a_class_with_no_rule_is_listed() -> None:
+    inputs = real_inputs()
+    classes = dict(inputs.class_map.classes)
+    classes["AC01"] = classes["AC01"].model_copy(update={"attack": ["T9999"]})
+    moved = inputs.class_map.model_copy(update={"classes": classes})
+    report = build_coverage(replace(inputs, class_map=moved))
+    assert "T9999" in {item.id for item in report.attacked_without_rule}
+
+
+def test_doc_flags_a_small_population_and_separates_never_run_from_failed() -> None:
+    text = render_coverage(build_coverage(real_inputs()))
+    assert "Attack variants (small-N)" in text
+    assert "Clean held-out attacks (small-N)" not in text
+    assert "by class: AC01 0, AC02 3, AC04 2, AC07 0" in text
+    assert "no attacks of that technique were run here" in text
+    assert "ADG-0013 recall 3/5" in text and "ADG-0014 recall 3/5" in text
+
+
+def test_doc_renders_a_null_rate_and_an_fpr_verdict() -> None:
+    inputs = real_inputs()
+    report = build_coverage(inputs)
+    population = report.populations[0]
+    rule = population.rules[0].model_copy(update={"recall": make_rate(0, 0)})
+    reshaped = population.model_copy(update={"rules": [rule, *population.rules[1:]]})
+    technique = report.techniques[0]
+    verdict = technique.verdicts[0].model_copy(update={"reason": Reason.FPR_TOO_HIGH})
+    changed = technique.model_copy(update={"verdicts": [verdict, *technique.verdicts[1:]]})
+    text = render_coverage(
+        report.model_copy(
+            update={
+                "populations": [reshaped, *report.populations[1:]],
+                "techniques": [changed, *report.techniques[1:]],
+            }
+        )
+    )
+    assert "null (0/0)" in text
+    assert "not covered, FPR too high" in text
+
+
 def test_refuses_results_that_do_not_belong_together() -> None:
     inputs = real_inputs()
     with pytest.raises(GauntletError, match="different registration"):
@@ -356,6 +493,12 @@ def test_refuses_results_that_do_not_belong_together() -> None:
         build_coverage(replace(inputs, baseline_sha256="0" * 64))
     with pytest.raises(GauntletError, match="rule files differ"):
         build_coverage(replace(inputs, rules=list(inputs.rules)[:-1]))
+    dev = inputs.baseline.model_copy(update={"split": Split.DEV})
+    with pytest.raises(GauntletError, match="held-out results only"):
+        build_coverage(replace(inputs, baseline=dev))
+    no_sections = inputs.evasion.model_copy(update={"sections": []})
+    with pytest.raises(GauntletError, match="no section"):
+        build_coverage(replace(inputs, evasion=no_sections))
     short = inputs.class_map.model_copy(update={"classes": {}})
     with pytest.raises(GauntletError, match="no entry for"):
         build_coverage(replace(inputs, class_map=short))

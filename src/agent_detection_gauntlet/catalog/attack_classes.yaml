@@ -1,5 +1,6 @@
 # Which techniques each attack class exercises, as the source lab's threat model files them
-# (agent-risk-framework docs/threat_model.md, commit below), written before any rule here existed.
+# (agent-risk-framework docs/threat_model.md, at the commit below, the file's last edit). Its
+# framework IDs per threat date from that repository's commit fb6fdf6, before any rule here existed.
 # It ties techniques to classes for per-technique counts and the "no successful attacks" reason.
 # It cannot make a technique covered: that comes from the rules' pooled results only.
 #

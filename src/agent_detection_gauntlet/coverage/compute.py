@@ -34,7 +34,7 @@ from agent_detection_gauntlet.metrics.compute import make_rate, sha256_file
 from agent_detection_gauntlet.metrics.report import Rate
 from agent_detection_gauntlet.rules.loader import LoadedRule, load_yaml_document
 from agent_detection_gauntlet.schema.common import STRICT_MODEL, NonEmptyStr
-from agent_detection_gauntlet.schema.labels import Guardrails
+from agent_detection_gauntlet.schema.labels import Guardrails, Split
 from agent_detection_gauntlet.validation.model import BaselineResults, Preregistration
 
 COVERAGE_JSON = Path("results/coverage/coverage.json")
@@ -109,6 +109,8 @@ class Inputs:
 
 def check_inputs(inputs: Inputs) -> None:
     """Refuse results that do not belong together or do not match the rule files."""
+    if inputs.baseline.split is not Split.HELDOUT or inputs.evasion.split is not Split.HELDOUT:
+        raise GauntletError("coverage is computed from held-out results only")
     if inputs.baseline.preregistration_sha256 != inputs.plan_sha256:
         raise GauntletError("the baseline results name a different registration")
     if inputs.evasion.baseline_results_sha256 != inputs.baseline_sha256:
@@ -145,6 +147,7 @@ def _clean_population(inputs: Inputs) -> Population:
         source="results/baseline/metrics.json: pooled.per_rule, both guardrail arms",
         succeeded_traces=population.malicious_succeeded,
         succeeded_groups=population.malicious_succeeded_groups,
+        small_n=population.malicious_succeeded < inputs.plan.small_n_below,
         succeeded_by_class={
             section.attack_class: section.succeeded_traces for section in inputs.baseline.per_class
         },
@@ -161,7 +164,10 @@ def _clean_population(inputs: Inputs) -> Population:
 
 
 def _section(evasion: EvasionResults, name: str) -> EvasionSection:
-    return next(section for section in evasion.sections if section.name == name)
+    for section in evasion.sections:
+        if section.name == name:
+            return section
+    raise GauntletError(f"the evasion results have no section {name}")
 
 
 def _evasion_population(inputs: Inputs, name: PopulationName) -> Population:
@@ -188,6 +194,7 @@ def _evasion_population(inputs: Inputs, name: PopulationName) -> Population:
         "FPR from benign_fpr, the same held-out benign traces, not mutated",
         succeeded_traces=arm.population.succeeded_traces,
         succeeded_groups=arm.population.succeeded_groups,
+        small_n=arm.population.succeeded_traces < inputs.plan.small_n_below,
         succeeded_by_class=by_class,
         rules=[
             _evidence(item, rows[item.rule.id].recall, fprs[item.rule.id], inputs.plan)
@@ -212,14 +219,16 @@ def _verdict(
     ineffective_only: bool,
 ) -> Verdict:
     evidence = [item for item in population.rules if item.rule_id in rule_ids]
-    own = sum(population.succeeded_by_class.get(name, 0) for name in classes) if classes else None
+    by_class = population.succeeded_by_class
+    own = sum(by_class.get(name, 0) for name in classes) if classes else None
     passing = [item for item in evidence if item.meets_recall and item.meets_fpr]
     reason: Reason | None = None
     if ineffective_only or own == 0:
         # Nothing of this technique succeeded here, so a rule passing on other attacks says
-        # nothing about it.
+        # nothing about it. A class absent from the population was never run at all.
         passing = []
-        reason = Reason.NO_SUCCESSFUL_ATTACKS
+        attempted = ineffective_only or any(name in by_class for name in classes)
+        reason = Reason.NO_SUCCESSFUL_ATTACKS if attempted else Reason.NOT_ATTEMPTED
     elif not passing:
         reason = (
             Reason.FPR_TOO_HIGH
@@ -317,10 +326,16 @@ def build_coverage(inputs: Inputs) -> CoverageReport:
     for name, map_entry in inputs.class_map.classes.items():
         for mapping_id in map_entry.not_in_catalog:
             outside.setdefault(mapping_id, []).append(name)
+    # A catalog ID that a class is filed under but no rule maps to is a gap of the same kind.
+    mapped = {(item.family, item.id) for item in techniques}
+    for (family, mapping_id), names in tied.items():
+        if (family, mapping_id) not in mapped:
+            outside.setdefault(mapping_id, []).extend(names)
     clean_by_class = populations[0].succeeded_by_class
     return CoverageReport(
         schema_version="1.0",
         thresholds=inputs.plan.coverage,
+        small_n_below=inputs.plan.small_n_below,
         class_map_source_commit=inputs.class_map.source_commit,
         ineffective_classes=sorted(ineffective),
         inputs=inputs.input_refs,

@@ -20,6 +20,7 @@ class Reason(StrEnum):
     RECALL_TOO_LOW = "recall_too_low"
     FPR_TOO_HIGH = "fpr_too_high"
     NO_SUCCESSFUL_ATTACKS = "no_successful_attacks"
+    NOT_ATTEMPTED = "not_attempted"
 
 
 class InputRef(BaseModel):
@@ -51,7 +52,10 @@ class Population(BaseModel):
     source: str = Field(description="Where in the golden file the pooled rows come from.")
     succeeded_traces: Count
     succeeded_groups: Count
-    succeeded_by_class: dict[str, Count]
+    succeeded_by_class: dict[str, Count] = Field(
+        description="Classes attempted here. A class that was never run is absent, not zero."
+    )
+    small_n: bool = Field(description="Succeeded traces are below the registered small-N line.")
     rules: list[RuleEvidence]
 
 
@@ -94,7 +98,7 @@ class Technique(BaseModel):
 
 
 class AttackedWithoutRule(BaseModel):
-    """An ID the source threat model files a class under, which no rule here may reference."""
+    """An ID the source threat model files a class under, which no rule here maps to."""
 
     model_config = STRICT_MODEL
 
@@ -110,6 +114,7 @@ class CoverageReport(BaseModel):
 
     schema_version: Literal["1.0"]
     thresholds: CoverageThresholds
+    small_n_below: Count
     class_map_source_commit: str
     ineffective_classes: list[str]
     inputs: list[InputRef]

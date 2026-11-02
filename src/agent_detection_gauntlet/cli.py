@@ -10,6 +10,8 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from agent_detection_gauntlet import __version__
 from agent_detection_gauntlet.catalog import FAMILIES, load_catalog
 from agent_detection_gauntlet.corpus.build import build as build_corpus
@@ -59,6 +61,7 @@ from agent_detection_gauntlet.firewall import (
 )
 from agent_detection_gauntlet.fit import fit_baselines
 from agent_detection_gauntlet.io.jsonl import (
+    format_validation_error,
     pretty_json,
     read_jsonl,
     strict_json_loads,
@@ -561,7 +564,10 @@ def cmd_coverage_build(args: argparse.Namespace) -> int:
 def cmd_coverage_claims(args: argparse.Namespace) -> int:
     if not args.results.is_file():
         raise GauntletError(f"no coverage results at {shown_path(args.results)}")
-    report = CoverageReport.model_validate_json(args.results.read_bytes().decode("utf-8"))
+    try:
+        report = CoverageReport.model_validate_json(args.results.read_bytes().decode("utf-8"))
+    except ValidationError as exc:
+        raise GauntletError(f"{shown_path(args.results)}: {format_validation_error(exc)}") from exc
     paths = docs_to_scan(args.root_dir, args.doc)
     problems = unsupported_claims(paths, report)
     for problem in problems:
