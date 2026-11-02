@@ -225,11 +225,11 @@ def test_guardrail_name_and_stage_need_0_2() -> None:
 
 
 def test_event_versions_accepted() -> None:
-    for version in ("0.1", "0.2"):
+    for version in ("0.1", "0.2", "0.3"):
         data = event_dict("s1", "session.start")
         data["schema_version"] = version
         assert validate(data).schema_version == version
-    data["schema_version"] = "0.3"
+    data["schema_version"] = "0.9"
     with pytest.raises(ValidationError, match="schema_version"):
         validate(data)
 
@@ -275,6 +275,43 @@ def test_label_0_2_optional_fields() -> None:
 def test_label_0_2_rules(overrides: dict[str, Any], message: str) -> None:
     with pytest.raises(ValidationError, match=message):
         LabelRecord.model_validate_json(json.dumps({**LABEL_0_2, **overrides}))
+
+
+LABEL_0_3 = {
+    **LABEL_0_2,
+    "schema_version": "0.3",
+    "scenario_id": "AC01-S03",
+    "variant_group": "AC01-S03",
+    "derived_from": "AC01",
+}
+
+
+def test_label_0_3_group_fields() -> None:
+    record = LabelRecord.model_validate_json(json.dumps(LABEL_0_3))
+    assert (record.variant_group, record.derived_from) == ("AC01-S03", "AC01")
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"schema_version": "0.2"}, r"need schema_version 0\.3"),
+        ({"schema_version": "0.2", "derived_from": None}, r"need schema_version 0\.3"),
+        ({"variant_group": ""}, "variant_group"),
+        (
+            {
+                "label": "benign",
+                "attack_class": None,
+                "attack_succeeded": None,
+                "scenario_id": None,
+                "task_id": "BT-001",
+            },
+            "must not carry derived_from",
+        ),
+    ],
+)
+def test_label_0_3_rules(overrides: dict[str, Any], message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        LabelRecord.model_validate_json(json.dumps({**LABEL_0_3, **overrides}))
 
 
 def test_label_0_1_needs_a_split() -> None:

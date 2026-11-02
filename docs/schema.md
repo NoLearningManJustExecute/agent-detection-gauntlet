@@ -7,16 +7,17 @@ Generated JSON Schemas for every format are committed under `schemas/` (see
 
 ## Schema versions
 
-The current version is **0.2**. Every reader accepts `"0.1"` and `"0.2"`, so files written under
-0.1 stay readable. Writers emit `"0.2"`.
+The current version is **0.3**. Every reader accepts `"0.1"`, `"0.2"` and `"0.3"`, so older
+files stay readable. Writers emit `"0.3"`.
 
 | Version | Changes |
 | --- | --- |
 | 0.1 | First release. |
 | 0.2 | Labels: optional `scenario_id`, `task_id`, `condition`, `source_run_id`; `split` may be `null` (not yet assigned). Traces: `adg.guardrail.name` and `adg.guardrail.stage` on `guardrail.action`. Detections and the metrics report change only their version string. |
+| 0.3 | Labels: optional `variant_group` (the distinct input a trace ran; the split assigns whole groups) and `derived_from` (the scenario a seeded variant was derived from). Other formats change only their version string. |
 
-A 0.1 record that uses a 0.2 field or attribute is rejected, even when the field is `null`, so
-the meaning of a 0.1 file never changes. All events of one trace must share one version.
+A record that uses a field or attribute from a later version is rejected, even when the field is
+`null`, so the meaning of an older file never changes. All events of one trace must share one version.
 
 ## OpenTelemetry GenAI conventions: pinned version
 
@@ -46,7 +47,7 @@ Every field is required. Unknown top-level keys are rejected and no type coercio
 
 | Field | Type | Rules |
 | --- | --- | --- |
-| `schema_version` | string | `"0.1"` or `"0.2"`. |
+| `schema_version` | string | `"0.1"`, `"0.2"` or `"0.3"`. |
 | `trace_id` | string | Identifier: `^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$`. |
 | `span_id` | string | Identifier, same pattern. Unique within the trace. |
 | `parent_span_id` | string or null | Required key. `null` for a root event, otherwise an identifier of another span in the same trace. Must not equal `span_id`. |
@@ -170,7 +171,7 @@ keys, no `NaN`, errors reported as `path:line`).
 
 | Field | Type | Rules |
 | --- | --- | --- |
-| `schema_version` | string | `"0.1"` or `"0.2"`. |
+| `schema_version` | string | `"0.1"`, `"0.2"` or `"0.3"`. |
 | `trace_id` | string | Identifier pattern. |
 | `label` | string | `malicious` or `benign`. |
 | `attack_class` | string or null | Non-blank string for malicious, `null` for benign. |
@@ -183,15 +184,19 @@ keys, no `NaN`, errors reported as `path:line`).
 | `task_id` | string or null | 0.2, optional. The benign task the trace ran. Benign only. |
 | `condition` | string or null | 0.2, optional. The experiment arm, for example `baseline` or `combined`. |
 | `source_run_id` | string or null | 0.2, optional. The run's identifier in the source repository's run log. |
+| `variant_group` | string or null | 0.3, optional. The distinct input the trace ran. The held-out split assigns whole groups. |
+| `derived_from` | string or null | 0.3, optional. The scenario a seeded variant (paraphrase or translation) was derived from. Malicious only. |
 
-The keys up to `source` are required, including those whose value is `null`. The 0.2 keys may
-be omitted. Unknown keys are rejected.
+The keys up to `source` are required, including those whose value is `null`. The 0.2 and 0.3
+keys may be omitted. Unknown keys are rejected.
 
 Consistency rules:
 
 - A `malicious` label needs a non-null `attack_class` and a non-null `attack_succeeded`.
 - A `benign` label must have `attack_class`, `attack_succeeded` and `mutation` all `null`.
-- A 0.1 label must have a `split` and must not carry any 0.2 key.
+- A 0.1 label must have a `split` and must not carry any 0.2 or 0.3 key; a 0.2 label must not
+  carry a 0.3 key.
+- `derived_from` is allowed only on malicious labels.
 - `scenario_id` is allowed only on malicious labels, `task_id` only on benign labels.
 - `gauntlet metrics` refuses any label whose `split` is `null`: scoring needs a frozen split.
 - A trace may be labeled only once across all labels input. A second label for the same
@@ -205,7 +210,7 @@ How `metrics` maps labels to outcome buckets is described in [metrics.md](metric
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `schema_version` | string | `"0.2"` (`"0.1"` is still read). |
+| `schema_version` | string | `"0.3"` (`"0.1"` and `"0.2"` are still read). |
 | `rule_id` | string | Rule id, `ADG-` followed by four digits. |
 | `rule_version` | string | Rule version (semantic version). |
 | `trace_id` | string | Trace the hit is in. |

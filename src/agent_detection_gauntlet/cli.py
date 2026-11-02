@@ -9,6 +9,9 @@ from pathlib import Path
 
 from agent_detection_gauntlet import __version__
 from agent_detection_gauntlet.catalog import load_catalog
+from agent_detection_gauntlet.corpus.build import build as build_corpus
+from agent_detection_gauntlet.corpus.card import render as render_card
+from agent_detection_gauntlet.corpus.verify import require_valid
 from agent_detection_gauntlet.engine.executor import scan
 from agent_detection_gauntlet.errors import GauntletError
 from agent_detection_gauntlet.io.jsonl import pretty_json, read_jsonl, write_jsonl, write_text
@@ -119,6 +122,40 @@ def cmd_export_schemas(args: argparse.Namespace) -> int:
     return 0
 
 
+DEFAULT_CORPUS = Path("datasets/corpus")
+DEFAULT_CARD = Path("docs/dataset.md")
+
+
+def cmd_corpus_build(args: argparse.Namespace) -> int:
+    summary = build_corpus(args.source, args.out, args.salt, args.notes)
+    print(
+        f"ok: {summary.raw} raw runs, {summary.unique} unique traces, {summary.groups} groups, "
+        f"{summary.heldout_groups} heldout"
+    )
+    return 0
+
+
+def cmd_corpus_verify(args: argparse.Namespace) -> int:
+    frozen = args.frozen_manifest.read_bytes() if args.frozen_manifest else None
+    require_valid(args.corpus, frozen)
+    print("ok: corpus matches its split manifest")
+    return 0
+
+
+def cmd_corpus_card(args: argparse.Namespace) -> int:
+    text = render_card(args.corpus)
+    if args.check:
+        current = args.out.read_bytes().decode("utf-8") if args.out.is_file() else None
+        if current != text:
+            print(f"{shown_path(args.out)} is out of date; run `gauntlet corpus card`")
+            return 1
+        print("ok: dataset card matches the corpus")
+        return 0
+    write_text(args.out, text)
+    print(f"ok: wrote {shown_path(args.out)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gauntlet",
@@ -171,6 +208,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="allow inputs outside the repository root and record only their file names",
     )
     p.set_defaults(handler=cmd_metrics)
+
+    corpus = sub.add_parser("corpus", help="build, verify or describe the frozen corpus")
+    csub = corpus.add_subparsers(dest="corpus_command", required=True, metavar="action")
+    c = csub.add_parser("build", help="dedupe exports and split by variant group")
+    c.add_argument("--source", type=Path, action="append", required=True, help="export dir")
+    c.add_argument("--out", type=Path, default=DEFAULT_CORPUS)
+    c.add_argument("--salt", required=True, help="split salt, recorded in the manifest")
+    c.add_argument(
+        "--notes", type=Path, default=None, help="class notes and known gaps (JSON), recorded"
+    )
+    c.set_defaults(handler=cmd_corpus_build)
+    c = csub.add_parser("verify", help="check the corpus against SPLIT_MANIFEST.json")
+    c.add_argument("corpus", type=Path, nargs="?", default=DEFAULT_CORPUS)
+    c.add_argument(
+        "--frozen-manifest", type=Path, default=None, help="manifest from the freeze commit"
+    )
+    c.set_defaults(handler=cmd_corpus_verify)
+    c = csub.add_parser("card", help="render the dataset card from the corpus")
+    c.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
+    c.add_argument("--out", type=Path, default=DEFAULT_CARD)
+    c.add_argument("--check", action="store_true", help="fail if the card is out of date")
+    c.set_defaults(handler=cmd_corpus_card)
 
     p = sub.add_parser("export-schemas", help="regenerate the JSON Schemas")
     p.add_argument("--out", type=Path, default=DEFAULT_SCHEMAS)

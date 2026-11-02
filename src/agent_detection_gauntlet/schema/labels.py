@@ -37,6 +37,8 @@ class LabelSource(StrEnum):
 
 # Optional fields added in 0.2. A 0.1 record must not carry them.
 FIELDS_SINCE_0_2: tuple[str, ...] = ("scenario_id", "task_id", "condition", "source_run_id")
+# Optional fields added in 0.3. A 0.1 or 0.2 record must not carry them.
+FIELDS_SINCE_0_3: tuple[str, ...] = ("variant_group", "derived_from")
 
 
 class LabelRecord(BaseModel):
@@ -80,6 +82,20 @@ class LabelRecord(BaseModel):
         default=None,
         description="0.2: the run's identifier in the source repository's run log.",
     )
+    variant_group: NonEmptyStr | None = Field(
+        default=None,
+        description=(
+            "0.3: the distinct input this trace ran. The held-out split assigns whole groups, "
+            "so near-identical inputs never sit on both sides."
+        ),
+    )
+    derived_from: NonEmptyStr | None = Field(
+        default=None,
+        description=(
+            "0.3: the scenario a seeded variant was derived from (paraphrase or translation), "
+            "or null for an authored scenario or task."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_consistency(self) -> LabelRecord:
@@ -90,6 +106,10 @@ class LabelRecord(BaseModel):
                 raise ValueError(f"fields {present} need schema_version 0.2")
             if self.split is None:
                 raise ValueError("split must be dev or heldout in schema_version 0.1")
+        if self.schema_version in ("0.1", "0.2"):
+            newer = [name for name in FIELDS_SINCE_0_3 if name in self.model_fields_set]
+            if newer:
+                raise ValueError(f"fields {newer} need schema_version 0.3")
         if self.label is Verdict.MALICIOUS:
             if self.attack_class is None:
                 raise ValueError("malicious labels need an attack_class")
@@ -104,4 +124,6 @@ class LabelRecord(BaseModel):
                 raise ValueError("benign labels must have a null mutation")
             if self.scenario_id is not None:
                 raise ValueError("benign labels must not carry a scenario_id")
+            if self.derived_from is not None:
+                raise ValueError("benign labels must not carry derived_from")
         return self
