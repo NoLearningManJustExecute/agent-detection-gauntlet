@@ -295,19 +295,64 @@ jobs:
           gauntlet validation verify "${args[@]}"
       # Same freeze for Phase 4. Its text is compared with what was first committed.
       - name: Evasion registration frozen, inputs disjoint, results reference its rule hashes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
           plan=docs/preregistration-evasion.json
+          inputs=datasets/evasion/mutated_scenarios.json
+          results=results/evasion/evasion.json
+          base="$PUSH_BEFORE"
+          if [ "$EVENT" = "pull_request" ]; then base="origin/$BASE_REF"; fi
+          for file in "$plan" "$inputs" "$results"; do
+            if [ ! -f "$file" ] && git cat-file -e "$base:$file" 2>/dev/null; then
+              echo "::error::$file exists on the base and may not be deleted"
+              exit 1
+            fi
+          done
           if [ ! -f "$plan" ]; then
             echo "no evasion registration yet; nothing to check"
             exit 0
           fi
           first=$(git log --diff-filter=A --format=%H -- "$plan" | tail -n 1)
+          # On the branch the registration must arrive alone and before the inputs. A squash merge
+          # puts them in one commit, and the pull request ref keeps the order.
+          if [ -f "$inputs" ]; then
+            first_inputs=$(git log --diff-filter=A --format=%H -- "$inputs" | tail -n 1)
+            if [ "$first" != "$first_inputs" ]; then
+              if ! git merge-base --is-ancestor "$first" "$first_inputs"; then
+                echo "::error::the evasion inputs arrived before the registration"
+                exit 1
+              fi
+              extra=$(git show --format= --name-only "$first" | grep -v '^docs/preregistration' || true)
+              if [ -n "$extra" ]; then
+                echo "::error::the evasion registration did not arrive alone"
+                exit 1
+              fi
+            fi
+          fi
           git show "$first:$plan" > "$RUNNER_TEMP/frozen-evasion.json"
           # The first commit's document ends with the rendered registration; take that part.
           git show "$first:docs/preregistration.md" \
             | sed -n '/^# Pre-registration: evasion research/,$p' > "$RUNNER_TEMP/frozen-evasion.md"
           gauntlet evasion verify --frozen-plan "$RUNNER_TEMP/frozen-evasion.json" \
             --frozen-doc "$RUNNER_TEMP/frozen-evasion.md"
+      # The access log only grows. This cannot see a row dropped before it was ever committed.
+      - name: Held-out log rows on the base are still there, in order
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          log=docs/heldout-log.md
+          base="$PUSH_BEFORE"
+          if [ "$EVENT" = "pull_request" ]; then base="origin/$BASE_REF"; fi
+          if git cat-file -e "$base:$log" 2>/dev/null; then
+            git show "$base:$log" | grep '^| 20' > "$RUNNER_TEMP/log-base.txt" || true
+            grep '^| 20' "$log" | head -n "$(wc -l < "$RUNNER_TEMP/log-base.txt")" > "$RUNNER_TEMP/log-now.txt"
+            cmp "$RUNNER_TEMP/log-base.txt" "$RUNNER_TEMP/log-now.txt"
+          fi
       # The only CI step that reads the held-out split, and only once a golden file exists. Its
       # log row lands on this runner and is discarded. The step prints no trace content.
       - name: Re-score and compare with the golden file

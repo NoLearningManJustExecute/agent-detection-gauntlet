@@ -27,6 +27,7 @@ from agent_detection_gauntlet.evasion.inputs import (
     SourceCatalogs,
     build_inputs,
     check_inputs_file,
+    is_payload_event,
     select_bases,
 )
 from agent_detection_gauntlet.evasion.model import (
@@ -56,7 +57,6 @@ from agent_detection_gauntlet.evasion.plan import (
 )
 from agent_detection_gauntlet.evasion.report import render_results
 from agent_detection_gauntlet.evasion.score import (
-    is_payload_event,
     mutate_trace,
     paired_interval,
     score_evasion,
@@ -650,6 +650,21 @@ def test_verify_catches_a_trace_that_repeats_the_corpus(project: Path) -> None:
     assert any("content hash of a corpus trace" in p for p in problems)
 
 
+def test_verify_catches_a_variant_prompt_that_repeats_the_corpus(project: Path) -> None:
+    plan = _plan(project)
+    evasion = project / "datasets" / "evasion"
+    doc = build_inputs(plan.bases, _catalog(project), plan.source_commit)
+    write_text(evasion / INPUTS_FILE, pretty_json(doc))
+    source = _export(project, plan)
+    for k in plan.content_ref_ks:
+        path = source / f"k{k}" / "traces" / "evasion.jsonl"
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text.replace("AC01-V02 variant off", "keep it quiet"), encoding="utf-8")
+    build_evasion(source, evasion, plan)
+    problems = verify_evasion(plan, project / "datasets" / "corpus", evasion)
+    assert any("repeats a corpus payload" in p for p in problems)
+
+
 @pytest.mark.parametrize(
     ("change", "message"),
     [
@@ -991,6 +1006,9 @@ def test_cli_verify_catches_a_changed_registration(
     assert main([*args, *_rule_args()]) == 0
     write_text(doc, text.replace("Two categories, kept separate.", "Two categories."))
     assert main([*args, *_rule_args()]) == 1
+    write_text(frozen_doc, "")
+    assert main([*args, *_rule_args()]) == 1
+    write_text(frozen_doc, text[text.index("# Pre-registration: evasion research") :])
     write_text(doc, text)
     write_text(frozen, "{}")
     assert main([*args, *_rule_args()]) == 1

@@ -27,6 +27,7 @@ from agent_detection_gauntlet.corpus.hashing import content_hash
 from agent_detection_gauntlet.errors import GauntletError
 from agent_detection_gauntlet.evasion.inputs import (
     check_inputs_file,
+    event_payload,
     normalized_payload,
     payload_of,
 )
@@ -41,6 +42,7 @@ from agent_detection_gauntlet.io.labels import load_labels
 from agent_detection_gauntlet.io.traces import load_traces
 from agent_detection_gauntlet.metrics.compute import sha256_file
 from agent_detection_gauntlet.schema.labels import LabelRecord, Split
+from agent_detection_gauntlet.schema.trace import EventType
 from agent_detection_gauntlet.validation.prereg import MANIFEST_FILE
 
 MANIFEST = "EVASION_MANIFEST.json"
@@ -154,6 +156,15 @@ def _corpus_hashes(corpus: Path, k: int) -> set[str]:
     return hashes
 
 
+def _corpus_payloads(corpus: Path, k: int) -> set[str]:
+    payloads: set[str] = set()
+    for split in Split:
+        for trace in load_traces([corpus / split.value / f"k{k}"]).traces:
+            texts = (event_payload(event) for event in trace.events)
+            payloads |= {normalized_payload(text) for text in texts if text}
+    return payloads
+
+
 def disjointness(
     plan: EvasionPlan,
     corpus: Path,
@@ -165,13 +176,21 @@ def disjointness(
     heldout = set(groups["heldout_groups"])
     corpus_hashes = _corpus_hashes(corpus, HASH_K)
     traces = load_traces([evasion / f"k{HASH_K}" / PLAN_TRACES]).traces
-    bases = {name: normalized_payload(item["payload"]) for name, item in inputs["bases"].items()}
+    known = _corpus_payloads(corpus, HASH_K)
+    known |= {normalized_payload(item["payload"]) for item in inputs["bases"].values()}
     payloads = {normalized_payload(payload_of(item)) for item in inputs["scenarios"]}
+    # An attack variant's payload is authored in the source lab; here its prompt is what can repeat.
+    labels = load_labels([evasion / LABELS]) if (evasion / LABELS).is_file() else {}
+    for trace in traces:
+        label = labels.get(trace.trace_id)
+        if label is not None and label.mutation in plan.attack_routes:
+            prompts = (e for e in trace.events if e.event_type is EventType.USER_PROMPT)
+            payloads |= {normalized_payload(text) for e in prompts if (text := event_payload(e))}
     return Disjointness(
         bases_outside_heldout=sorted(
             b.scenario_id for b in plan.bases if b.variant_group not in heldout
         ),
-        inputs_matching_corpus_payloads=len(payloads & set(bases.values())),
+        inputs_matching_corpus_payloads=len(payloads & known),
         traces_matching_corpus_hashes=sum(
             content_hash(trace.events) in corpus_hashes for trace in traces
         ),
@@ -219,7 +238,7 @@ def verify_evasion(plan: EvasionPlan, corpus: Path, evasion: Path) -> list[str]:
     if found.bases_outside_heldout:
         problems.append(f"bases outside the held-out split: {found.bases_outside_heldout}")
     if found.inputs_matching_corpus_payloads:
-        problems.append("an evasion input repeats the payload of its base")
+        problems.append("an evasion input repeats a corpus payload")
     if found.traces_matching_corpus_hashes:
         problems.append("an evasion trace has the content hash of a corpus trace")
     if found.corpus_labels_with_mutation:

@@ -17,10 +17,42 @@ from agent_detection_gauntlet.errors import GauntletError
 from agent_detection_gauntlet.evasion.model import BaseScenario
 from agent_detection_gauntlet.evasion.mutations import PAYLOAD_MUTATIONS, mutate, scenario_id
 from agent_detection_gauntlet.schema.labels import LabelRecord, Split
+from agent_detection_gauntlet.schema.trace import (
+    ATTR_CONTENT_TEXT,
+    ATTR_SOURCE_TRUST,
+    EventType,
+    TraceEvent,
+)
 
 OBFUSCATED_SUFFIX = "-OBF"
 BASELINE_ARM = "baseline"
 SCENARIO_FIELDS: tuple[str, ...] = ("channel", "oracle", "workspace_files", "outside_files")
+
+
+ATTR_DATA_SOURCE = "gen_ai.data_source.id"
+TOOL_DEFINITION = "mcp.tool_definition"
+UNTRUSTED = "untrusted"
+
+
+def is_payload_event(event: TraceEvent, mcp: bool) -> bool:
+    """The event a payload enters by: an untrusted tool definition, or else the user prompt."""
+    if mcp:
+        return (
+            event.event_type is EventType.RETRIEVAL
+            and event.attributes.get(ATTR_DATA_SOURCE) == TOOL_DEFINITION
+            and event.attributes.get(ATTR_SOURCE_TRUST) == UNTRUSTED
+        )
+    return event.event_type is EventType.USER_PROMPT
+
+
+def event_payload(event: TraceEvent) -> str | None:
+    """The attack text an event carries: a prompt, or an untrusted tool's description."""
+    text = event.attributes.get(ATTR_CONTENT_TEXT)
+    if not isinstance(text, str):
+        return None
+    if is_payload_event(event, False):
+        return text
+    return text.partition(": ")[2] or text if is_payload_event(event, True) else None
 
 
 def select_bases(

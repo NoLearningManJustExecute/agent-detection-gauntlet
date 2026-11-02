@@ -24,7 +24,7 @@ from agent_detection_gauntlet.evasion.build import (
     read_inputs_file,
     read_manifest,
 )
-from agent_detection_gauntlet.evasion.inputs import OBFUSCATED_SUFFIX
+from agent_detection_gauntlet.evasion.inputs import OBFUSCATED_SUFFIX, is_payload_event
 from agent_detection_gauntlet.evasion.model import (
     ArmSection,
     AttackSuccess,
@@ -64,19 +64,10 @@ from agent_detection_gauntlet.rules.loader import LoadedRule
 from agent_detection_gauntlet.rules.model import Rule
 from agent_detection_gauntlet.schema.common import TIER_ORDER, Tier
 from agent_detection_gauntlet.schema.labels import Guardrails, LabelRecord, Split
-from agent_detection_gauntlet.schema.trace import (
-    ATTR_CONTENT_TEXT,
-    ATTR_SOURCE_TRUST,
-    EventType,
-    Trace,
-    TraceEvent,
-)
+from agent_detection_gauntlet.schema.trace import ATTR_CONTENT_TEXT, Trace, TraceEvent
 from agent_detection_gauntlet.validation.model import BaselineResults, BootstrapInterval, ResultRule
 from agent_detection_gauntlet.validation.score import ALL_TIERS, LABELS_FILE, traces_dir
 
-ATTR_DATA_SOURCE = "gen_ai.data_source.id"
-TOOL_DEFINITION = "mcp.tool_definition"
-UNTRUSTED = "untrusted"
 ARM_BY_GUARDRAILS = {Guardrails.OFF: "baseline", Guardrails.ON: "combined"}
 PAYLOAD_POOL = "all_payload_mutations"
 VARIANT_POOL = "all_attack_variants"
@@ -348,17 +339,6 @@ class Scope:
                 )
             )
         return rows
-
-
-def is_payload_event(event: TraceEvent, mcp: bool) -> bool:
-    """The event a payload enters by: an untrusted tool definition, or else the user prompt."""
-    if mcp:
-        return (
-            event.event_type is EventType.RETRIEVAL
-            and event.attributes.get(ATTR_DATA_SOURCE) == TOOL_DEFINITION
-            and event.attributes.get(ATTR_SOURCE_TRUST) == UNTRUSTED
-        )
-    return event.event_type is EventType.USER_PROMPT
 
 
 def _mutated_text(name: str, text: str, key: str, mcp: bool) -> str:

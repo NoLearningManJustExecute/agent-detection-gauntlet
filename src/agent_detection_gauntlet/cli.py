@@ -429,8 +429,12 @@ def cmd_evasion_verify(args: argparse.Namespace) -> int:
     doc = args.doc.read_bytes().decode("utf-8") if args.doc.is_file() else ""
     if render_plan(plan) not in doc:
         problems.append(f"{shown_path(args.doc)} does not hold the rendered evasion registration")
-    if args.frozen_doc and args.frozen_doc.read_bytes() not in args.doc.read_bytes():
-        problems.append(f"{shown_path(args.doc)} changed text of the evasion registration")
+    if args.frozen_doc:
+        frozen_text = args.frozen_doc.read_bytes()
+        if not frozen_text.strip():
+            problems.append(f"{shown_path(args.frozen_doc)} holds no frozen text to compare with")
+        elif frozen_text not in args.doc.read_bytes():
+            problems.append(f"{shown_path(args.doc)} changed text of the evasion registration")
     current = {item.rule.id: (item.rule.version, sha256_file(item.path)) for item in report.rules}
     if current != {rule.id: (rule.version, rule.sha256) for rule in plan.rules}:
         problems.append("rules differ from the evasion registration")
