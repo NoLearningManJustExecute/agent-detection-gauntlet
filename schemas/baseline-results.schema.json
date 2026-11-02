@@ -1,0 +1,1020 @@
+{
+  "$defs": {
+    "AttackFailed": {
+      "additionalProperties": false,
+      "description": "Malicious traces whose attack did not succeed. Excluded from recall, reported here.",
+      "properties": {
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "detected": {
+          "minimum": 0,
+          "title": "Detected",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "count",
+        "detected"
+      ],
+      "title": "AttackFailed",
+      "type": "object"
+    },
+    "AttackFailedClass": {
+      "additionalProperties": false,
+      "properties": {
+        "attack_class": {
+          "title": "Attack Class",
+          "type": "string"
+        },
+        "groups": {
+          "minimum": 0,
+          "title": "Groups",
+          "type": "integer"
+        },
+        "guardrails_off": {
+          "minimum": 0,
+          "title": "Guardrails Off",
+          "type": "integer"
+        },
+        "guardrails_on": {
+          "minimum": 0,
+          "title": "Guardrails On",
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attack_class",
+        "guardrails_off",
+        "guardrails_on",
+        "total",
+        "groups"
+      ],
+      "title": "AttackFailedClass",
+      "type": "object"
+    },
+    "AttackFailedSection": {
+      "additionalProperties": false,
+      "properties": {
+        "by_class": {
+          "items": {
+            "$ref": "#/$defs/AttackFailedClass"
+          },
+          "title": "By Class",
+          "type": "array"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "by_class"
+      ],
+      "title": "AttackFailedSection",
+      "type": "object"
+    },
+    "BootstrapInterval": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 0.95,
+          "minimum": 0.95,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "lower": {
+          "title": "Lower",
+          "type": "number"
+        },
+        "method": {
+          "const": "paired_group_bootstrap_percentile",
+          "title": "Method",
+          "type": "string"
+        },
+        "resamples": {
+          "title": "Resamples",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "upper": {
+          "title": "Upper",
+          "type": "number"
+        }
+      },
+      "required": [
+        "method",
+        "confidence",
+        "resamples",
+        "seed",
+        "lower",
+        "upper"
+      ],
+      "title": "BootstrapInterval",
+      "type": "object"
+    },
+    "ClassSection": {
+      "additionalProperties": false,
+      "description": "Secondary: one attack class. Read with its sample size and interval.",
+      "properties": {
+        "attack_class": {
+          "title": "Attack Class",
+          "type": "string"
+        },
+        "attack_failed_groups": {
+          "minimum": 0,
+          "title": "Attack Failed Groups",
+          "type": "integer"
+        },
+        "attack_failed_traces": {
+          "minimum": 0,
+          "title": "Attack Failed Traces",
+          "type": "integer"
+        },
+        "below_floor": {
+          "description": "The class is below the corpus group floor.",
+          "title": "Below Floor",
+          "type": "boolean"
+        },
+        "small_n": {
+          "description": "The recall denominator is below small_n_below.",
+          "title": "Small N",
+          "type": "boolean"
+        },
+        "succeeded_groups": {
+          "minimum": 0,
+          "title": "Succeeded Groups",
+          "type": "integer"
+        },
+        "succeeded_traces": {
+          "minimum": 0,
+          "title": "Succeeded Traces",
+          "type": "integer"
+        },
+        "table": {
+          "$ref": "#/$defs/RecallTable"
+        },
+        "traces": {
+          "minimum": 0,
+          "title": "Traces",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attack_class",
+        "traces",
+        "succeeded_traces",
+        "succeeded_groups",
+        "attack_failed_traces",
+        "attack_failed_groups",
+        "small_n",
+        "below_floor",
+        "table"
+      ],
+      "title": "ClassSection",
+      "type": "object"
+    },
+    "CombinedMetrics": {
+      "additionalProperties": false,
+      "description": "A trace counts as detected when any rule in the set fires on it.",
+      "properties": {
+        "attack_failed": {
+          "$ref": "#/$defs/AttackFailed"
+        },
+        "confusion": {
+          "$ref": "#/$defs/Confusion"
+        },
+        "rates": {
+          "$ref": "#/$defs/Rates"
+        },
+        "rule_ids": {
+          "items": {
+            "pattern": "^ADG-[0-9]{4}$",
+            "type": "string"
+          },
+          "title": "Rule Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rule_ids",
+        "confusion",
+        "attack_failed",
+        "rates"
+      ],
+      "title": "CombinedMetrics",
+      "type": "object"
+    },
+    "Confusion": {
+      "additionalProperties": false,
+      "description": "Session-level counts. attack_failed traces are not in any cell.",
+      "properties": {
+        "fn": {
+          "minimum": 0,
+          "title": "Fn",
+          "type": "integer"
+        },
+        "fp": {
+          "minimum": 0,
+          "title": "Fp",
+          "type": "integer"
+        },
+        "tn": {
+          "minimum": 0,
+          "title": "Tn",
+          "type": "integer"
+        },
+        "tp": {
+          "minimum": 0,
+          "title": "Tp",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tp",
+        "fp",
+        "tn",
+        "fn"
+      ],
+      "title": "Confusion",
+      "type": "object"
+    },
+    "FiredCell": {
+      "additionalProperties": false,
+      "properties": {
+        "fired": {
+          "$ref": "#/$defs/Rate",
+          "description": "Traces the rule or tier fired on, over the traces present."
+        },
+        "name": {
+          "description": "A rule id, a tier, or all_tiers.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "fired"
+      ],
+      "title": "FiredCell",
+      "type": "object"
+    },
+    "GroupedPopulation": {
+      "additionalProperties": false,
+      "description": "Traces per bucket, and the distinct variant groups behind them.",
+      "properties": {
+        "attack_failed": {
+          "minimum": 0,
+          "title": "Attack Failed",
+          "type": "integer"
+        },
+        "attack_failed_groups": {
+          "minimum": 0,
+          "title": "Attack Failed Groups",
+          "type": "integer"
+        },
+        "benign": {
+          "minimum": 0,
+          "title": "Benign",
+          "type": "integer"
+        },
+        "benign_groups": {
+          "minimum": 0,
+          "title": "Benign Groups",
+          "type": "integer"
+        },
+        "malicious_succeeded": {
+          "minimum": 0,
+          "title": "Malicious Succeeded",
+          "type": "integer"
+        },
+        "malicious_succeeded_groups": {
+          "minimum": 0,
+          "title": "Malicious Succeeded Groups",
+          "type": "integer"
+        },
+        "traces": {
+          "minimum": 0,
+          "title": "Traces",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "traces",
+        "benign",
+        "malicious_succeeded",
+        "attack_failed",
+        "benign_groups",
+        "malicious_succeeded_groups",
+        "attack_failed_groups"
+      ],
+      "title": "GroupedPopulation",
+      "type": "object"
+    },
+    "Guardrails": {
+      "enum": [
+        "on",
+        "off"
+      ],
+      "title": "Guardrails",
+      "type": "string"
+    },
+    "GuardrailsSection": {
+      "additionalProperties": false,
+      "properties": {
+        "guardrails": {
+          "$ref": "#/$defs/Guardrails"
+        },
+        "population": {
+          "$ref": "#/$defs/GroupedPopulation"
+        },
+        "section": {
+          "$ref": "#/$defs/Section"
+        }
+      },
+      "required": [
+        "guardrails",
+        "population",
+        "section"
+      ],
+      "title": "GuardrailsSection",
+      "type": "object"
+    },
+    "IneffectiveSection": {
+      "additionalProperties": false,
+      "description": "Classes kept out of recall. A fired rule here is reported, never counted in FPR.",
+      "properties": {
+        "all_tiers": {
+          "$ref": "#/$defs/FiredCell"
+        },
+        "classes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Classes",
+          "type": "array"
+        },
+        "per_rule": {
+          "items": {
+            "$ref": "#/$defs/FiredCell"
+          },
+          "title": "Per Rule",
+          "type": "array"
+        },
+        "per_tier": {
+          "items": {
+            "$ref": "#/$defs/FiredCell"
+          },
+          "title": "Per Tier",
+          "type": "array"
+        },
+        "succeeded_traces": {
+          "minimum": 0,
+          "title": "Succeeded Traces",
+          "type": "integer"
+        },
+        "traces": {
+          "minimum": 0,
+          "title": "Traces",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "classes",
+        "traces",
+        "succeeded_traces",
+        "per_rule",
+        "per_tier",
+        "all_tiers"
+      ],
+      "title": "IneffectiveSection",
+      "type": "object"
+    },
+    "InputFile": {
+      "additionalProperties": false,
+      "properties": {
+        "external": {
+          "description": "True when the file lies outside the repository root. Only its file name is recorded, and only when --external-basename was given.",
+          "title": "External",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Path relative to the repository root, or only the file name when external.",
+          "title": "Path",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "rule",
+            "trace",
+            "detections",
+            "labels"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "path",
+        "external",
+        "sha256"
+      ],
+      "title": "InputFile",
+      "type": "object"
+    },
+    "Interval": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 0.95,
+          "minimum": 0.95,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "lower": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Lower",
+          "type": "number"
+        },
+        "method": {
+          "const": "wilson",
+          "title": "Method",
+          "type": "string"
+        },
+        "upper": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Upper",
+          "type": "number"
+        }
+      },
+      "required": [
+        "method",
+        "confidence",
+        "lower",
+        "upper"
+      ],
+      "title": "Interval",
+      "type": "object"
+    },
+    "PairedDifference": {
+      "additionalProperties": false,
+      "description": "Rate of a minus rate of b, on the same traces.",
+      "properties": {
+        "a": {
+          "$ref": "#/$defs/Rate"
+        },
+        "a_only": {
+          "minimum": 0,
+          "title": "A Only",
+          "type": "integer"
+        },
+        "b": {
+          "$ref": "#/$defs/Rate"
+        },
+        "b_only": {
+          "minimum": 0,
+          "title": "B Only",
+          "type": "integer"
+        },
+        "both": {
+          "minimum": 0,
+          "title": "Both",
+          "type": "integer"
+        },
+        "ci95": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BootstrapInterval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "difference": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Difference"
+        },
+        "groups": {
+          "minimum": 0,
+          "title": "Groups",
+          "type": "integer"
+        },
+        "neither": {
+          "minimum": 0,
+          "title": "Neither",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "a",
+        "b",
+        "difference",
+        "a_only",
+        "b_only",
+        "both",
+        "neither",
+        "groups",
+        "ci95"
+      ],
+      "title": "PairedDifference",
+      "type": "object"
+    },
+    "ProvenanceRun": {
+      "additionalProperties": false,
+      "properties": {
+        "k": {
+          "title": "K",
+          "type": "integer"
+        },
+        "per_rule": {
+          "items": {
+            "$ref": "#/$defs/RuleMetrics"
+          },
+          "title": "Per Rule",
+          "type": "array"
+        },
+        "tier": {
+          "$ref": "#/$defs/TierMetrics"
+        }
+      },
+      "required": [
+        "k",
+        "per_rule",
+        "tier"
+      ],
+      "title": "ProvenanceRun",
+      "type": "object"
+    },
+    "Rate": {
+      "additionalProperties": false,
+      "description": "A rate with its numerator and denominator. value and ci95 are null when undefined.",
+      "properties": {
+        "ci95": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Interval"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Wilson score interval. Null when the denominator is zero, and always null for f1, which is not a binomial proportion."
+        },
+        "denominator": {
+          "minimum": 0,
+          "title": "Denominator",
+          "type": "integer"
+        },
+        "numerator": {
+          "minimum": 0,
+          "title": "Numerator",
+          "type": "integer"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value",
+        "numerator",
+        "denominator",
+        "ci95"
+      ],
+      "title": "Rate",
+      "type": "object"
+    },
+    "Rates": {
+      "additionalProperties": false,
+      "properties": {
+        "detection_rate": {
+          "$ref": "#/$defs/Rate"
+        },
+        "f1": {
+          "$ref": "#/$defs/Rate"
+        },
+        "fpr": {
+          "$ref": "#/$defs/Rate"
+        },
+        "precision": {
+          "$ref": "#/$defs/Rate"
+        },
+        "recall": {
+          "$ref": "#/$defs/Rate"
+        }
+      },
+      "required": [
+        "precision",
+        "recall",
+        "f1",
+        "fpr",
+        "detection_rate"
+      ],
+      "title": "Rates",
+      "type": "object"
+    },
+    "RecallCell": {
+      "additionalProperties": false,
+      "properties": {
+        "attack_failed": {
+          "$ref": "#/$defs/AttackFailed"
+        },
+        "name": {
+          "description": "A rule id, a tier, or all_tiers.",
+          "title": "Name",
+          "type": "string"
+        },
+        "recall": {
+          "$ref": "#/$defs/Rate"
+        }
+      },
+      "required": [
+        "name",
+        "recall",
+        "attack_failed"
+      ],
+      "title": "RecallCell",
+      "type": "object"
+    },
+    "RecallTable": {
+      "additionalProperties": false,
+      "properties": {
+        "all_tiers": {
+          "$ref": "#/$defs/RecallCell"
+        },
+        "per_rule": {
+          "items": {
+            "$ref": "#/$defs/RecallCell"
+          },
+          "title": "Per Rule",
+          "type": "array"
+        },
+        "per_tier": {
+          "items": {
+            "$ref": "#/$defs/RecallCell"
+          },
+          "title": "Per Tier",
+          "type": "array"
+        }
+      },
+      "required": [
+        "per_rule",
+        "per_tier",
+        "all_tiers"
+      ],
+      "title": "RecallTable",
+      "type": "object"
+    },
+    "ResultRule": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^ADG-[0-9]{4}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier"
+        },
+        "version": {
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "tier",
+        "sha256"
+      ],
+      "title": "ResultRule",
+      "type": "object"
+    },
+    "RuleMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "attack_failed": {
+          "$ref": "#/$defs/AttackFailed"
+        },
+        "confusion": {
+          "$ref": "#/$defs/Confusion"
+        },
+        "rates": {
+          "$ref": "#/$defs/Rates"
+        },
+        "rule_id": {
+          "pattern": "^ADG-[0-9]{4}$",
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "rule_version": {
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$",
+          "title": "Rule Version",
+          "type": "string"
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier"
+        }
+      },
+      "required": [
+        "rule_id",
+        "rule_version",
+        "tier",
+        "confusion",
+        "attack_failed",
+        "rates"
+      ],
+      "title": "RuleMetrics",
+      "type": "object"
+    },
+    "Section": {
+      "additionalProperties": false,
+      "properties": {
+        "all_tiers": {
+          "$ref": "#/$defs/CombinedMetrics"
+        },
+        "per_rule": {
+          "items": {
+            "$ref": "#/$defs/RuleMetrics"
+          },
+          "title": "Per Rule",
+          "type": "array"
+        },
+        "per_tier": {
+          "items": {
+            "$ref": "#/$defs/TierMetrics"
+          },
+          "title": "Per Tier",
+          "type": "array"
+        }
+      },
+      "required": [
+        "per_rule",
+        "per_tier",
+        "all_tiers"
+      ],
+      "title": "Section",
+      "type": "object"
+    },
+    "SetAside": {
+      "additionalProperties": false,
+      "description": "Recall with some succeeded traces removed, as a sensitivity check.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "registered": {
+          "description": "False for a row added after scoring.",
+          "title": "Registered",
+          "type": "boolean"
+        },
+        "remaining_groups": {
+          "minimum": 0,
+          "title": "Remaining Groups",
+          "type": "integer"
+        },
+        "set_aside_groups": {
+          "minimum": 0,
+          "title": "Set Aside Groups",
+          "type": "integer"
+        },
+        "set_aside_traces": {
+          "minimum": 0,
+          "title": "Set Aside Traces",
+          "type": "integer"
+        },
+        "table": {
+          "$ref": "#/$defs/RecallTable"
+        }
+      },
+      "required": [
+        "name",
+        "registered",
+        "set_aside_traces",
+        "set_aside_groups",
+        "remaining_groups",
+        "table"
+      ],
+      "title": "SetAside",
+      "type": "object"
+    },
+    "Split": {
+      "enum": [
+        "dev",
+        "heldout"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "Tier": {
+      "enum": [
+        "content",
+        "sequence",
+        "behavior"
+      ],
+      "title": "Tier",
+      "type": "string"
+    },
+    "TierComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "a": {
+          "$ref": "#/$defs/Tier"
+        },
+        "b": {
+          "$ref": "#/$defs/Tier"
+        },
+        "fpr": {
+          "$ref": "#/$defs/PairedDifference"
+        },
+        "recall": {
+          "$ref": "#/$defs/PairedDifference"
+        }
+      },
+      "required": [
+        "a",
+        "b",
+        "recall",
+        "fpr"
+      ],
+      "title": "TierComparison",
+      "type": "object"
+    },
+    "TierMetrics": {
+      "additionalProperties": false,
+      "description": "A trace counts as detected by a tier when any rule in that tier fires on it.",
+      "properties": {
+        "attack_failed": {
+          "$ref": "#/$defs/AttackFailed"
+        },
+        "confusion": {
+          "$ref": "#/$defs/Confusion"
+        },
+        "rates": {
+          "$ref": "#/$defs/Rates"
+        },
+        "rule_ids": {
+          "items": {
+            "pattern": "^ADG-[0-9]{4}$",
+            "type": "string"
+          },
+          "title": "Rule Ids",
+          "type": "array"
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier"
+        }
+      },
+      "required": [
+        "tier",
+        "rule_ids",
+        "confusion",
+        "attack_failed",
+        "rates"
+      ],
+      "title": "TierMetrics",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The golden baseline results file.",
+  "properties": {
+    "attack_failed": {
+      "$ref": "#/$defs/AttackFailedSection"
+    },
+    "by_guardrails": {
+      "items": {
+        "$ref": "#/$defs/GuardrailsSection"
+      },
+      "title": "By Guardrails",
+      "type": "array"
+    },
+    "ineffective": {
+      "$ref": "#/$defs/IneffectiveSection"
+    },
+    "inputs": {
+      "items": {
+        "$ref": "#/$defs/InputFile"
+      },
+      "title": "Inputs",
+      "type": "array"
+    },
+    "per_class": {
+      "items": {
+        "$ref": "#/$defs/ClassSection"
+      },
+      "title": "Per Class",
+      "type": "array"
+    },
+    "pooled": {
+      "$ref": "#/$defs/Section"
+    },
+    "population": {
+      "$ref": "#/$defs/GroupedPopulation"
+    },
+    "preregistration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Preregistration Sha256",
+      "type": "string"
+    },
+    "provenance_sensitivity": {
+      "items": {
+        "$ref": "#/$defs/ProvenanceRun"
+      },
+      "title": "Provenance Sensitivity",
+      "type": "array"
+    },
+    "rules": {
+      "items": {
+        "$ref": "#/$defs/ResultRule"
+      },
+      "title": "Rules",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "set_asides": {
+      "items": {
+        "$ref": "#/$defs/SetAside"
+      },
+      "title": "Set Asides",
+      "type": "array"
+    },
+    "split": {
+      "$ref": "#/$defs/Split"
+    },
+    "tier_comparison": {
+      "items": {
+        "$ref": "#/$defs/TierComparison"
+      },
+      "title": "Tier Comparison",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "split",
+    "preregistration_sha256",
+    "rules",
+    "inputs",
+    "population",
+    "pooled",
+    "by_guardrails",
+    "per_class",
+    "attack_failed",
+    "ineffective",
+    "provenance_sensitivity",
+    "set_asides",
+    "tier_comparison"
+  ],
+  "title": "BaselineResults",
+  "type": "object"
+}

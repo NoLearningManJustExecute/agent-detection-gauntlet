@@ -134,7 +134,7 @@ def test_export_and_drift_detection(tmp_path: Path, capsys: pytest.CaptureFixtur
     assert schema_drift(target) == ["extra.json", "label.schema.json", "rule.schema.json"]
     assert main(["export-schemas", "--check", "--out", str(target)]) == 1
     assert "out of date" in capsys.readouterr().err
-    assert len(export_schemas(target)) == 5
+    assert len(export_schemas(target)) == 7
 
 
 def test_errors_exit_non_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

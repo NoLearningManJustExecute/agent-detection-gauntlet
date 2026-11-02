@@ -187,6 +187,15 @@ depends on the working directory. The only fields that can change between two ru
 inputs are `provenance.git_commit` and `provenance.git_dirty`, when the checkout itself changes. Each input's sha256 lets a reader confirm which exact files a
 report was computed from.
 
+## Baseline validation
+
+`gauntlet validation score` uses the same formulas on the held-out split and adds the breakdowns
+Phase 3 registered: all tiers combined, per class, guardrails on and off, provenance sensitivity
+and the paired tier comparison. Its output, `results/baseline/metrics.json`, leaves out the git
+provenance and the package version on purpose, so that CI can compare it byte for byte. The
+registered method is in [preregistration.md](preregistration.md) once committed; the report it
+produces is [results-baseline.md](results-baseline.md).
+
 ## Default split
 
 `--split` defaults to `heldout`. Published metrics come only from the held-out split, which is

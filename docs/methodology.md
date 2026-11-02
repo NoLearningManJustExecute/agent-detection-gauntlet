@@ -27,8 +27,11 @@ would not have.
   default and records the split in every report.
 - If held-out results are poor, the rule is not retuned against them and re-scored. Results are
   reported as measured.
-- The command line enforces this. `gauntlet scan` and `gauntlet metrics` refuse held-out inputs
-  unless `GAUNTLET_SCORING_HELDOUT=1` is set, and every such run is appended to
+- `gauntlet validation score` also refuses to run unless the rules match a committed
+  pre-registration hash for hash. CI re-scores and fails on any change to the golden file while
+  rule hashes are unchanged.
+- The command line enforces this. `gauntlet scan`, `gauntlet metrics` and
+  `gauntlet validation score` refuse held-out inputs unless `GAUNTLET_SCORING_HELDOUT=1` is set, and every such run is appended to
   [heldout-log.md](heldout-log.md), in the checkout the input sits in, before any trace is read.
   An input counts as held-out by what it would read: its path or an expanded file is under
   `corpus/heldout`, or a file's hash is pinned as held-out in the split manifest. `metrics` checks
@@ -47,7 +50,10 @@ would not have.
   read the split for CI's schema and freeze checks. Manifest and label parsing and lint also read
   it. Folder names alone carry no attack content.
 - Known limits of the command-line checks: a deleted manifest disables copy detection, and an
-  edited copy no longer matches its pinned hash; path checks still apply.
+  edited copy no longer matches its pinned hash; path checks still apply. `gauntlet scan` and
+  `gauntlet metrics` with the variable set read held-out data without asking for a registration
+  (the run is still logged), and `gauntlet validation score --prereg` accepts any valid file;
+  `gauntlet validation verify` is what ties committed results to the frozen registration.
 - Behavior thresholds are fitted by code on dev benign traces only, and the fit command is
   recorded in the rule. See [engine.md](engine.md#baseline).
 
