@@ -37,11 +37,17 @@ would not have.
   fits refuse held-out data whatever the environment says. Commands that take `--out` may not write
   into the held-out folder or over the log; `gauntlet corpus build` is the one exception, since it
   creates the split, and CI's freeze check covers it.
-- What this does not cover: `gauntlet validate-traces`, `gauntlet corpus verify` and `gauntlet
-  corpus card` read the split on purpose, for CI's freeze and schema checks, and the leak guard
-  scans the whole tree, including held-out files, and reports hits only. A deleted manifest
-  disables copy detection, and an edited copy no longer matches its pinned hash; path checks still
-  apply.
+- What the firewall protects is held-out attack content reaching detection work. Blocked: showing
+  held-out attack content to rule authoring or human review, and scoring the held-out split before
+  rules are frozen and pre-registered.
+- Allowed: opaque byte-level access by privacy and integrity tooling, which pattern-matches or
+  parses without showing attack content to whoever writes the rules. The leak guard scans every
+  file, held-out included, because privacy scanning is mandatory and has no exceptions, and it
+  reports hits only. `gauntlet validate-traces`, `gauntlet corpus verify` and `gauntlet corpus card`
+  read the split for CI's schema and freeze checks. Manifest and label parsing and lint also read
+  it. Folder names alone carry no attack content.
+- Known limits of the command-line checks: a deleted manifest disables copy detection, and an
+  edited copy no longer matches its pinned hash; path checks still apply.
 - Behavior thresholds are fitted by code on dev benign traces only, and the fit command is
   recorded in the rule. See [engine.md](engine.md#baseline).
 
