@@ -1,0 +1,37 @@
+{
+  "files": {
+    "k16/traces.jsonl": "2abc868c854dc0178a8ca72574d9c132bce72bf84b17b3e11ae34295f04d9da5",
+    "k24/traces.jsonl": "d84338fcc9a17491794568b88dfff78f7a1bea14a6befc23ab9afbf5742f5a32",
+    "k48/traces.jsonl": "fd7317bf97feefd8f41f54d778e38724d6ff44ec58625a72b7d709b2281e9c26",
+    "labels.jsonl": "2f6d205ab3645a22601b72329b2e616ca7b24fac2b317c2dc7868cb3621d4af5",
+    "mutated_scenarios.json": "878127bf2331d947e8bcbca786462a0038017d2eeefe8bd90d1c24776ed0c51f",
+    "raw_index.jsonl": "205495d1da1d4421243cdc819e38ab71138737dab6fbbb032c52765b4d941a7f"
+  },
+  "manifest_version": 1,
+  "plan_sha256": "444c7bc9ce5fbebea8658a94f493638ac891894875855819fd77681719397b17",
+  "run_commit": "90e9fb54ca4dcf77933a4494b3ccbc80a5576481",
+  "source": {
+    "content_ref_k": [
+      16,
+      24,
+      48
+    ],
+    "experiments": [
+      "evasion-baseline",
+      "evasion-combined"
+    ],
+    "model": "llama3.1:8b",
+    "model_digest": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+    "run_log": "evasion.db",
+    "runs_exported": 887,
+    "runs_skipped_error": 1,
+    "runs_skipped_unlisted": 0,
+    "schema_version": "0.3",
+    "seeds": [
+      1337,
+      1339
+    ],
+    "source": "agent-risk-framework",
+    "source_commit": "6375199355d2f9ff719befd187e55e85d22d3211"
+  }
+}

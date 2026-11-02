@@ -164,4 +164,10 @@ def test_the_heldout_log_holds_only_registered_scoring_runs() -> None:
     ]
     assert rows
     assert rows[0][2] == "validation score"
-    assert {row[2] for row in rows} <= {"validation score", "validation score --check"}
+    assert {row[2] for row in rows} <= {
+        "validation score",
+        "validation score --check",
+        "evasion mutate",
+        "evasion score",
+        "evasion score --check",
+    }
