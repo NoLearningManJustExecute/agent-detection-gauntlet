@@ -155,6 +155,13 @@ def test_the_detection_catalog_is_current() -> None:
     assert render(RULES_DIR) == (REPO_ROOT / "docs" / "detections.md").read_text(encoding="utf-8")
 
 
-def test_the_heldout_log_has_no_entries_yet() -> None:
+def test_the_heldout_log_holds_only_registered_scoring_runs() -> None:
     log: Path = REPO_ROOT / "docs" / "heldout-log.md"
-    assert log.read_text(encoding="utf-8").rstrip().endswith("|---|---|---|---|")
+    rows = [
+        [cell.strip() for cell in line.split("|")[1:-1]]
+        for line in log.read_text(encoding="utf-8").splitlines()
+        if line.startswith("| 20")
+    ]
+    assert rows
+    assert rows[0][2] == "validation score"
+    assert {row[2] for row in rows} <= {"validation score", "validation score --check"}
