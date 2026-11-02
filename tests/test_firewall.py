@@ -15,6 +15,7 @@ from agent_detection_gauntlet.firewall import (
     LOG_HEADER,
     heldout_inputs,
     refuse_heldout,
+    refuse_output,
     require_clearance,
 )
 from agent_detection_gauntlet.paths import set_repo_root
@@ -67,6 +68,76 @@ def test_no_manifest_means_paths_only(tmp_path: Path) -> None:
     set_repo_root(tmp_path)
     other = write_lines(tmp_path / "other" / "x.jsonl", taint_trace_events("t-1"))
     assert heldout_inputs([other]) == []
+
+
+def test_a_directory_with_no_trace_files_reads_nothing(repo: Path) -> None:
+    empty = repo / "empty"
+    empty.mkdir()
+    assert heldout_inputs([empty]) == []
+
+
+def test_a_missing_path_is_not_flagged_unless_it_names_heldout(repo: Path) -> None:
+    assert heldout_inputs([repo / "absent.jsonl"]) == []
+    missing = repo / "datasets" / "corpus" / "heldout" / "absent.jsonl"
+    assert heldout_inputs([missing]) == [missing]
+
+
+def test_a_corrupt_manifest_fails_closed(repo: Path) -> None:
+    (repo / "datasets" / "corpus" / "SPLIT_MANIFEST.json").write_text("not json", encoding="utf-8")
+    with pytest.raises(GauntletError, match="split manifest is not valid"):
+        heldout_inputs([repo / "datasets" / "corpus" / "dev"])
+
+
+@pytest.mark.parametrize("parent", ["", "datasets", "datasets/corpus"])
+def test_parents_are_flagged_from_outside_the_repo(
+    repo: Path,
+    parent: str,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The answer depends on what the input reads, not on the working directory or the root."""
+    elsewhere = tmp_path_factory.mktemp("elsewhere")
+    monkeypatch.chdir(elsewhere)
+    set_repo_root(None)
+    assert heldout_inputs([repo / parent]) == [repo / parent]
+    set_repo_root(elsewhere)
+    assert heldout_inputs([repo / parent]) == [repo / parent]
+
+
+def test_a_copy_beside_the_repo_is_recognized_from_outside(
+    repo: Path, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = repo / "datasets" / "corpus" / "heldout" / "k24" / "traces.jsonl"
+    copy = repo / "scratch" / "renamed.jsonl"
+    copy.parent.mkdir()
+    copy.write_bytes(source.read_bytes())
+    elsewhere = tmp_path_factory.mktemp("elsewhere")
+    monkeypatch.chdir(elsewhere)
+    set_repo_root(elsewhere)
+    assert heldout_inputs([copy]) == [copy]
+
+
+def test_the_log_goes_to_the_checkout_that_holds_the_data(
+    repo: Path, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(HELDOUT_ENV, "1")
+    other = tmp_path_factory.mktemp("other")
+    (other / ".git").mkdir()
+    set_repo_root(other)
+    assert require_clearance("scan", [repo / "datasets"]) is True
+    assert not (other / "docs" / "heldout-log.md").exists()
+    text = (repo / "docs" / "heldout-log.md").read_text(encoding="utf-8")
+    assert "| scan | datasets |" in text
+    assert str(repo) not in text
+
+
+@pytest.mark.parametrize(
+    "target", ["datasets/corpus/heldout/new.jsonl", "docs/heldout-log.md", "DOCS/heldout-log.md"]
+)
+def test_outputs_may_not_land_on_protected_paths(repo: Path, target: str) -> None:
+    with pytest.raises(GauntletError, match="firewall-protected"):
+        refuse_output(repo / target)
+    refuse_output(repo / "out" / "fine.jsonl")
 
 
 def test_refusal_names_the_input_and_writes_no_log(repo: Path) -> None:
@@ -168,3 +239,28 @@ def test_cli_metrics_refuses_corpus_labels_on_the_default_split(
     # The dev split of the same labels is not a held-out read.
     assert main(["--root", str(repo), *args, "--split", "dev"]) == 1
     assert "refuses held-out" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("flag", ["--detections", "--labels"])
+def test_cli_metrics_checks_every_input_it_reads(
+    repo: Path, flag: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    held = repo / "datasets" / "corpus" / "heldout" / "k24" / "traces.jsonl"
+    labels = write_lines(repo / "labels.jsonl", [_corpus_label("t-dev", "dev")])
+    inputs = {"--detections": "missing", "--labels": str(labels), flag: str(held)}
+    args = ["metrics", "--rules", "missing", "--traces", str(repo / "datasets/corpus/dev")]
+    for name, value in inputs.items():
+        args += [name, value]
+    assert main(["--root", str(repo), *args, "--split", "dev", "--out", str(repo / "m.json")]) == 1
+    assert "refuses held-out input" in capsys.readouterr().err
+
+
+def test_cli_scan_refuses_a_protected_output(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = repo / "docs" / "heldout-log.md"
+    dev = repo / "datasets" / "corpus" / "dev"
+    args = ["scan", "--rules", "missing", "--traces", str(dev), "--out", str(out)]
+    assert main(["--root", str(repo), *args]) == 1
+    assert "firewall-protected" in capsys.readouterr().err
+    assert not out.exists()

@@ -28,7 +28,7 @@ the rules disagree. Rules are hypotheses until scored: this catalog carries no r
 - **Logic:** match
 - **Telemetry:** retrieval, tool.result
 - **Mappings:** ATLAS AML.T0051.001; OWASP LLM LLM01; OWASP Agentic ASI01; ATT&CK none
-- **Fixtures:** 2 tp, 5 fp
+- **Fixtures:** 3 tp, 5 fp
 
 Fires on text in a retrieval or tool result that addresses the agent with override or imperative phrasing, after NFKC normalization, case folding and whitespace collapse.
 
@@ -54,7 +54,7 @@ Fires when any string in a tool call's arguments holds a credential-shaped value
 
 **Limitations.**
 
-- The canary format is specific to the sandbox. On a real deployment only the generic token patterns remain, and those miss unstructured secrets.
+- The canary format and the service_token name are specific to the sandbox, and every dev hit comes from one of those two. The generic token patterns have no dev evidence and miss unstructured secrets.
 - A value that is encoded, spaced out or summarized before it reaches the arguments does not match.
 - A legitimate call that names a credential field, such as a query about how service_token rotation works, matches.
 
@@ -63,7 +63,7 @@ Fires when any string in a tool call's arguments holds a credential-shaped value
 - **Version:** 0.1.0 (experimental), **severity:** medium
 - **Logic:** match
 - **Telemetry:** tool.call
-- **Mappings:** ATLAS AML.T0068; OWASP LLM LLM02; OWASP Agentic ASI02; ATT&CK none
+- **Mappings:** ATLAS AML.T0057; OWASP LLM LLM02; OWASP Agentic ASI02; ATT&CK none
 - **Fixtures:** 1 tp, 5 fp
 
 Fires when an outbound tool call's arguments hold an unbroken base64 or hex run of at least 24 characters.
@@ -109,7 +109,7 @@ Fires when a user prompt claims a system role, suspends rules, asks the agent to
 **Limitations.**
 
 - The phrase list is English, and most direct attacks that succeed in the dev split use ordinary requests with no override wording at all.
-- Legitimate prompts about base64, or asking for a reply that does not mention something, match.
+- Benign prompts that quote or rewrite such phrases match, as do prompts about base64 or asking for a reply that does not mention something. The dev benign set has such prompts.
 - It says nothing about whether the agent complied.
 
 ## Sequence tier
@@ -159,7 +159,7 @@ Fires when one trace reads untrusted content, later reads data labeled secret or
 - **Logic:** sequence: secret_read, then external_send
 - **Telemetry:** tool.result, tool.call
 - **Mappings:** ATLAS AML.T0057; OWASP LLM LLM02; OWASP Agentic ASI02; ATT&CK none
-- **Fixtures:** 3 tp, 5 fp
+- **Fixtures:** 1 tp, 5 fp
 
 Fires when a trace reads data labeled secret or pii and later calls an outbound tool, with no untrusted precondition.
 
@@ -167,7 +167,7 @@ Fires when a trace reads data labeled secret or pii and later calls an outbound 
 
 **Limitations.**
 
-- In the dev split it fires only on attacks that failed, so one true positive fixture is synthetic and the rule is unproven on a successful real trace.
+- In the dev split it fires only on failed attacks of the ineffective class AC03, so its true positive fixture is synthetic and the rule is unproven on a successful real trace.
 - A user who reads a credential file and then sends an unrelated message produces the same sequence, since the rule does not check that the secret reached the send.
 - Secrets taken from the system prompt or from memory are not labeled tool results and are not covered.
 
@@ -187,7 +187,7 @@ Fires when a write, destructive or outbound tool call derives, through adg.conte
 
 - adg.content.ref comes from verbatim overlap of at least K characters (K=24 here). A rewrite of the untrusted text breaks the link and the rule misses.
 - A user who deliberately asks to forward untrusted content produces the same flow.
-- The write tool list is a name pattern, so a renamed tool is not covered.
+- The write tool list is a name pattern, so a renamed tool is not covered. The corpus has only send tools, so the write and destructive names are untested.
 
 ### ADG-0010: Secret-bearing tool call after untrusted content
 
@@ -244,7 +244,7 @@ Fires when a write, destructive or outbound tool is used for the first time in t
 
 - A task that legitimately reads an untrusted email and then replies fires. This is the expected false positive of the rule.
 - If the tool was already used before the untrusted content arrived, a later malicious use is not a first use and the rule misses it.
-- The privileged list is a name pattern, so a renamed tool is not covered.
+- The privileged list is a name pattern, so a renamed tool is not covered. The corpus has only send tools, so the write and destructive names are untested.
 
 ### ADG-0013: Rare tool transition relative to the dev benign baseline
 
@@ -262,7 +262,7 @@ Fires on each pair of consecutive tool calls, including the first call of a trac
 
 **Limitations.**
 
-- The fit population is small, so any legitimate transition its tasks never happened to use looks rare and fires.
+- The fit population is small, so any legitimate transition its tasks never happened to use looks rare and fires. Every fitted transition sits above the 1 percent line, so in practice rare means never seen in the fit.
 - With few tools most attack paths reuse common transitions, such as read then send, and do not fire.
 - The table holds tool names only. A malicious call through a common transition with hostile arguments looks normal.
 
@@ -283,3 +283,4 @@ Fires when a file tool argument climbs out of the workspace with a parent path s
 - An absolute path or a symlink escapes the workspace with no parent segment, and is caught only if the tool result is marked unknown.
 - It depends on the sandbox marking trust unknown for out-of-boundary reads; other instrumentation may not make that distinction.
 - A legitimate relative path through a parent directory that stays inside the workspace fires.
+- Every dev hit involves one literal path, and trust unknown appears only on reads that succeeded, so the dev evidence is one scenario rewritten, not independent escapes.

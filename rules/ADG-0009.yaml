@@ -56,7 +56,8 @@ limitations:
 - adg.content.ref comes from verbatim overlap of at least K characters (K=24 here). A rewrite of the
   untrusted text breaks the link and the rule misses.
 - A user who deliberately asks to forward untrusted content produces the same flow.
-- The write tool list is a name pattern, so a renamed tool is not covered.
+- The write tool list is a name pattern, so a renamed tool is not covered. The corpus has only send
+  tools, so the write and destructive names are untested.
 fixtures:
   tp:
   - arf-0165b1b4516be280a771480a

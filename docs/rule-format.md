@@ -51,7 +51,7 @@ Event types are the trace `event_type` values: `session.start`, `user.prompt`, `
 
 ### Event match
 
-All three primitives select events with the same structure:
+The primitives select events with the same structure:
 
 ```yaml
 event_types: [<event type>, ...]   # non-empty, no repeats
@@ -178,7 +178,9 @@ starts after `#`. A path is dot-separated object keys and list indexes made of l
 `_` and `-`. A path that reaches nothing is missing. `attributes.gen_ai.tool.call.arguments`
 without a path returns the whole arguments object. `trace_id` and `timestamp` cannot be
 referenced. `<key>` must be non-empty with no leading or trailing whitespace. A JSON `null` value
-counts as missing.
+counts as missing. Since format 1.1, `#` in a field reference always starts a path, so an attribute
+whose key holds `#` cannot be referenced; a format 1.0 rule with such a reference is rejected
+rather than silently changing meaning. No trace in this repository has such a key.
 
 ### Operators
 

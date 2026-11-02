@@ -145,6 +145,15 @@ def test_new_features_need_format_1_1(logic: dict[str, Any]) -> None:
     assert make_rule(format_version="1.1", **fields).format_version == "1.1"
 
 
+@pytest.mark.parametrize(
+    "value", [{"bind": "x"}, {"baseline": 1}, {"first_occurrence": 1}, {"field": "a#b"}]
+)
+def test_a_compared_value_is_data_not_rule_structure(value: dict[str, Any]) -> None:
+    where = {"field": "attributes.a", "op": "equals", "value": value}
+    logic = {"match": {"event_types": ["tool.call"], "where": where}}
+    assert make_rule(telemetry=["tool.call"], logic=logic).format_version == "1.0"
+
+
 def test_rules_without_a_format_version_still_load() -> None:
     assert make_rule().format_version == "1.0"
 
@@ -418,6 +427,25 @@ def test_fit_needs_inputs_inside_the_repository(fit_repo: Path, tmp_path_factory
     outside = tmp_path_factory.mktemp("outside") / "labels.jsonl"
     with pytest.raises(GauntletError, match="must be inside the repository"):
         fit_baselines(fit_repo / "rules", [fit_repo / "t"], outside)
+
+
+def test_fit_refuses_heldout_labels(fit_repo: Path) -> None:
+    held = write_lines(fit_repo / "datasets" / "corpus" / "heldout" / "l.jsonl", [_label("a")])
+    with pytest.raises(GauntletError, match="baseline fitting must not read held-out data"):
+        fit_baselines(fit_repo / "rules", [fit_repo / "t"], held)
+
+
+def test_fit_leaves_the_file_alone_when_fitted_is_not_the_last_key(fit_repo: Path) -> None:
+    path = fit_repo / "rules" / "ADG-9101.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    fixtures = data.pop("fixtures")
+    data["fitted"] = {**FIT, "threshold": 9}
+    data["fixtures"] = fixtures
+    text = yaml.safe_dump(data, sort_keys=False)
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(GauntletError, match="fitted must be the last key"):
+        fit_baselines(fit_repo / "rules", [fit_repo / "t"], fit_repo / "labels.jsonl")
+    assert path.read_text(encoding="utf-8") == text
 
 
 def test_cli_fit_baselines_then_check(fit_repo: Path, capsys: pytest.CaptureFixture[str]) -> None:

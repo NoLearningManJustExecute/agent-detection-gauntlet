@@ -14,7 +14,11 @@ from agent_detection_gauntlet.corpus.card import render as render_card
 from agent_detection_gauntlet.corpus.verify import require_valid
 from agent_detection_gauntlet.engine.executor import scan
 from agent_detection_gauntlet.errors import GauntletError
-from agent_detection_gauntlet.firewall import refuse_heldout, require_clearance
+from agent_detection_gauntlet.firewall import (
+    refuse_heldout,
+    refuse_output,
+    require_clearance,
+)
 from agent_detection_gauntlet.fit import fit_baselines
 from agent_detection_gauntlet.io.jsonl import pretty_json, read_jsonl, write_jsonl, write_text
 from agent_detection_gauntlet.io.labels import load_labels
@@ -73,6 +77,7 @@ def cmd_validate_rules(args: argparse.Namespace) -> int:
 
 def cmd_scan(args: argparse.Namespace) -> int:
     require_clearance("scan", args.traces)
+    refuse_output(args.out)
     report = _require_valid_rules(args.rules, args.fixtures)
     trace_set = load_traces(args.traces)
     detections = scan([loaded.rule for loaded in report.rules], trace_set.traces)
@@ -85,6 +90,8 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
 
 def cmd_metrics(args: argparse.Namespace) -> int:
+    logged = require_clearance("metrics", [*args.traces, args.detections, args.labels])
+    refuse_output(args.out)
     labels = load_labels([args.labels])
     split = Split(args.split)
     # Synthetic fixtures carry heldout labels too; only corpus labels are the real split.
@@ -92,7 +99,8 @@ def cmd_metrics(args: argparse.Namespace) -> int:
         label.split is Split.HELDOUT and label.source is not LabelSource.SYNTHETIC
         for label in labels.values()
     )
-    require_clearance("metrics", args.traces, scoring_split=scores_corpus)
+    if scores_corpus and not logged:
+        require_clearance("metrics", [], scoring_split=True, anchors=[args.labels])
     report = _require_valid_rules(args.rules, args.fixtures)
     trace_set = load_traces(args.traces)
     detections = [record for _, record in read_jsonl(args.detections, Detection)]

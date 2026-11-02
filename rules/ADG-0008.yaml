@@ -47,15 +47,13 @@ logic:
           - nfkc
           - casefold
 limitations:
-- In the dev split it fires only on attacks that failed, so one true positive fixture is synthetic
-  and the rule is unproven on a successful real trace.
+- In the dev split it fires only on failed attacks of the ineffective class AC03, so its true positive
+  fixture is synthetic and the rule is unproven on a successful real trace.
 - A user who reads a credential file and then sends an unrelated message produces the same sequence,
   since the rule does not check that the secret reached the send.
 - Secrets taken from the system prompt or from memory are not labeled tool results and are not covered.
 fixtures:
   tp:
-  - arf-06ead225f5ce89386660caf1
-  - arf-1bc4844f869c85183e625108
   - syn-0010
   fp:
   - arf-0003bc96b3a5c6cd552995df

@@ -17,13 +17,18 @@ from pathlib import Path
 import yaml
 
 from agent_detection_gauntlet.engine.primitives import baseline_events, trace_transitions
-from agent_detection_gauntlet.errors import GauntletError
+from agent_detection_gauntlet.errors import GauntletError, InputError
 from agent_detection_gauntlet.firewall import refuse_heldout
 from agent_detection_gauntlet.io.labels import load_labels
 from agent_detection_gauntlet.io.traces import load_traces
 from agent_detection_gauntlet.paths import repo_relative
-from agent_detection_gauntlet.rules.loader import load_rule_file, rule_files
-from agent_detection_gauntlet.rules.model import BaselineLogic, BaselineSpec, BaselineStatistic
+from agent_detection_gauntlet.rules.loader import load_rule_file, load_yaml_document, rule_files
+from agent_detection_gauntlet.rules.model import (
+    BaselineLogic,
+    BaselineSpec,
+    BaselineStatistic,
+    Rule,
+)
 from agent_detection_gauntlet.schema.labels import Split, Verdict
 from agent_detection_gauntlet.schema.trace import Trace
 
@@ -47,7 +52,7 @@ def fit_values(spec: BaselineSpec, traces: Sequence[Trace]) -> dict[str, object]
 
 
 def benign_dev_traces(trace_paths: Sequence[Path], labels_path: Path) -> list[Trace]:
-    refuse_heldout(trace_paths, "baseline fitting")
+    refuse_heldout([*trace_paths, labels_path], "baseline fitting")
     labels = load_labels([labels_path])
     traces = load_traces(trace_paths).traces
     not_dev = sum(
@@ -72,6 +77,16 @@ def _command_text(rules_dir: Path, trace_paths: Sequence[Path], labels_path: Pat
             raise GauntletError(f"{flag} must be inside the repository, so the fit can be rerun")
         words += [flag, *(str(item) for item in relative)]
     return " ".join(words)
+
+
+def _require_same_rule(path: Path, rule: Rule, updated: str) -> None:
+    """Refuse a rewrite that changes anything but the fitted block, before it touches the file."""
+    try:
+        rewritten = Rule.model_validate_json(load_yaml_document(updated, path.name))
+    except ValueError as exc:
+        raise InputError(path, "fitted must be the last key in the rule file") from exc
+    if rewritten.model_copy(update={"fitted": None}) != rule.model_copy(update={"fitted": None}):
+        raise InputError(path, "fitted must be the last key in the rule file")
 
 
 @dataclass(frozen=True)
@@ -108,7 +123,7 @@ def fit_baselines(
             continue
         stale.append(path)
         if not check:
+            _require_same_rule(path, rule, updated)
             path.write_bytes(updated.encode("utf-8"))
-            load_rule_file(path)
             written.append(path)
     return FitOutcome(written=written, stale=stale, fitted=fitted)

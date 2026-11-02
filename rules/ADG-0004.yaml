@@ -12,7 +12,7 @@ hypothesis: Encoding hides content from filters and from a human reviewer, and o
   even when its meaning is not.
 mappings:
   atlas:
-  - AML.T0068
+  - AML.T0057
   owasp_llm:
   - LLM02
   owasp_agentic:

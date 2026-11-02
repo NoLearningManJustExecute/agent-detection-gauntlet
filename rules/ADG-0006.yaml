@@ -38,7 +38,8 @@ logic:
 limitations:
 - The phrase list is English, and most direct attacks that succeed in the dev split use ordinary requests
   with no override wording at all.
-- Legitimate prompts about base64, or asking for a reply that does not mention something, match.
+- Benign prompts that quote or rewrite such phrases match, as do prompts about base64 or asking for
+  a reply that does not mention something. The dev benign set has such prompts.
 - It says nothing about whether the agent complied.
 fixtures:
   tp:

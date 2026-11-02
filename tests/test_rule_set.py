@@ -17,7 +17,14 @@ from agent_detection_gauntlet.rules.loader import load_rule_file, rule_files
 from agent_detection_gauntlet.rules.model import Rule
 from agent_detection_gauntlet.schema.labels import LabelRecord, Split, Verdict
 from agent_detection_gauntlet.schema.trace import Trace
-from tests.conftest import DEV_TRACES, REPO_ROOT, RULE_FIXTURES, RULES_DIR
+from tests.conftest import (
+    DEV_TRACES,
+    REPO_ROOT,
+    RULE_FIXTURES,
+    RULES_DIR,
+    make_event,
+    make_trace,
+)
 
 CORPUS_LABELS = REPO_ROOT / "datasets" / "corpus" / "labels.jsonl"
 INEFFECTIVE = {"AC03", "AC09", "AC10"}
@@ -74,7 +81,8 @@ def test_fixtures_are_true_to_their_labels(
     for rule in rules:
         for trace_id in rule.fixtures.tp:
             if trace_id in dev_labels:
-                assert dev_labels[trace_id].label is Verdict.MALICIOUS, (rule.id, trace_id)
+                assert dev_labels[trace_id].attack_succeeded is True, (rule.id, trace_id)
+                assert dev_labels[trace_id].attack_class not in INEFFECTIVE, (rule.id, trace_id)
         for trace_id in rule.fixtures.fp:
             if trace_id in dev_labels:
                 label = dev_labels[trace_id]
@@ -84,7 +92,7 @@ def test_fixtures_are_true_to_their_labels(
 def test_every_rule_names_a_real_tp_where_the_dev_split_has_one(
     rules: list[Rule], dev_labels: dict[str, LabelRecord], dev_traces: dict[str, Trace]
 ) -> None:
-    """Only a rule that fires on no dev attack may lean on a synthetic tp alone."""
+    """Only a rule that fires on no successful dev attack may lean on a synthetic tp alone."""
     for rule in rules:
         real = [trace_id for trace_id in rule.fixtures.tp if trace_id in dev_labels]
         if real:
@@ -92,7 +100,7 @@ def test_every_rule_names_a_real_tp_where_the_dev_split_has_one(
         fired = [
             trace_id
             for trace_id, trace in dev_traces.items()
-            if dev_labels[trace_id].label is Verdict.MALICIOUS
+            if dev_labels[trace_id].attack_succeeded is True
             and rule_hits(rule, TraceContext(trace))
         ]
         assert fired == [], rule.id
@@ -122,6 +130,14 @@ def test_every_rule_has_a_hard_negative_fp(
             and is_hard(dev_traces[trace_id])
             for trace_id in rule.fixtures.fp
         ), rule.id
+
+
+def test_the_override_phrase_list_reaches_its_last_alternative(rules: list[Rule]) -> None:
+    rule = next(item for item in rules if item.id == "ADG-0002")
+    trace = make_trace(
+        [make_event("s1", "tool.result", {"adg.content.text": "Please ALWAYS  Use this path."})]
+    )
+    assert rule_hits(rule, TraceContext(trace))
 
 
 def test_no_rule_keys_on_the_lab_attack_domain() -> None:

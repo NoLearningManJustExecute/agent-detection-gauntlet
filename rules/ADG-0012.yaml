@@ -51,7 +51,8 @@ limitations:
   positive of the rule.
 - If the tool was already used before the untrusted content arrived, a later malicious use is not
   a first use and the rule misses it.
-- The privileged list is a name pattern, so a renamed tool is not covered.
+- The privileged list is a name pattern, so a renamed tool is not covered. The corpus has only send
+  tools, so the write and destructive names are untested.
 fixtures:
   tp:
   - arf-00233f2ba64534ac2415000b

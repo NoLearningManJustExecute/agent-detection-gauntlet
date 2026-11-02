@@ -436,7 +436,12 @@ def _uses_format_1_1(value: Any, parent: str | None = None) -> bool:
             return True
         if any(PATH_SEPARATOR in ref for ref in value.get("bind", {}).values()):
             return True
-        return any(_uses_format_1_1(item, key) for key, item in value.items() if key != "bind")
+        # A condition's value is data to compare with, never rule structure.
+        return any(
+            _uses_format_1_1(item, key)
+            for key, item in value.items()
+            if key not in ("bind", "value")
+        )
     if isinstance(value, list):
         return any(_uses_format_1_1(item, parent) for item in value)
     return parent in ("field", "distinct") and isinstance(value, str) and PATH_SEPARATOR in value

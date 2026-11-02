@@ -30,7 +30,8 @@ logic:
       - tool.call
 limitations:
 - The fit population is small, so any legitimate transition its tasks never happened to use looks
-  rare and fires.
+  rare and fires. Every fitted transition sits above the 1 percent line, so in practice rare means
+  never seen in the fit.
 - With few tools most attack paths reuse common transitions, such as read then send, and do not fire.
 - The table holds tool names only. A malicious call through a common transition with hostile arguments
   looks normal.

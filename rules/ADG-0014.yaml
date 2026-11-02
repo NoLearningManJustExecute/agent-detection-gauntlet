@@ -42,6 +42,8 @@ limitations:
 - It depends on the sandbox marking trust unknown for out-of-boundary reads; other instrumentation
   may not make that distinction.
 - A legitimate relative path through a parent directory that stays inside the workspace fires.
+- Every dev hit involves one literal path, and trust unknown appears only on reads that succeeded,
+  so the dev evidence is one scenario rewritten, not independent escapes.
 fixtures:
   tp:
   - arf-076f382c2be5158953908b11

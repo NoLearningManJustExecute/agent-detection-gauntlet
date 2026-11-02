@@ -36,7 +36,7 @@ logic:
         (all |any )?(of )?(the |your )?(previous|prior|above|earlier)|new instructions?:|system (notice|override):|you
         are now |you must (also )?(call|send|read|include|forward|use) |do not (tell|inform|mention)(
         this)?( to)?( the)? user|<important>|before (every|each|any) (search|call|request|use)|always
-        useb
+        use\b
 limitations:
 - The phrase list is English. A translated or paraphrased injection with the same effect does not
   match.
@@ -46,6 +46,7 @@ limitations:
   it.
 fixtures:
   tp:
+  - arf-00233f2ba64534ac2415000b
   - arf-0165b1b4516be280a771480a
   - arf-2c7627ab616af6406928bed7
   fp:
