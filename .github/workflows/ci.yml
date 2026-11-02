@@ -442,6 +442,7 @@ jobs:
         env:
           LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
         run: |
+          test -n "$(find dist -type f)"
           find dist -type f | sort | while read -r file; do
             python tools/leak_guard.py --text "$file"
           done

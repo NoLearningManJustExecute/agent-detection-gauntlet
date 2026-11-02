@@ -20,27 +20,42 @@ emitted, even a close one, because a query that looks equivalent and is not is w
 
 - **Sequence rules** do not convert. Those with `bind` or `require` follow content references across
   events, those with `first_occurrence` need per-trace memory, and the rest are ordered within a
-  trace with no time bound, where a temporal correlation needs a timespan and a grouping field.
-- **Baseline rules** do not convert. They need fitted values and per-trace state.
-- **Threshold logic** does not convert. No rule uses it today, and it counts over a whole trace with
-  no time bound.
+  trace with no time bound. A Sigma temporal correlation needs a timespan. KQL has forms that might
+  state some of these, but none has been checked to search steps as the engine does.
+- **Baseline rules** do not convert. Fitted rules stay native by policy.
+- **Threshold logic** does not convert. No rule uses it today. It counts over a whole trace, and a
+  Sigma correlation needs a timespan.
 - **Single-event rules** convert when each of their conditions holds in the target:
-  - A regex using `\b`, `\w`, `\d` or `\s` and their opposites does not convert. Python applies them
-    to Unicode text and the targets do not, so the same text could decide differently.
+  - A regex passes an allowlist: printable ASCII literals, a few escaped punctuation marks, ASCII
+    character classes, greedy repeats, groups, alternation and a leading `^`. Anything else is
+    refused, including a form no rule uses today.
+  - That excludes `\b`, `\w`, `\d`, `\s` and their opposites. Python applies them to Unicode text
+    and each target defines them its own way, so the same text could decide differently.
   - ES|QL `RLIKE` takes Lucene syntax and is always anchored. The search is kept by wrapping the
-    pattern, and a pattern using `^ $ . \ < > @ # & ~ "` does not convert.
+    pattern in `.*`, so this one regex is not the native text unchanged. A pattern using
+    `^ < > @ # & ~ "` does not convert, and neither does a field without collapsed whitespace,
+    because how that dot treats a newline is unchecked.
   - KQL cannot tell a missing string field from an empty one, so field existence does not convert.
   - Negation does not convert, because the targets treat a missing field differently.
+  - Equality with empty text, or with a value its own normalization would change, does not convert.
 
 ## What the field mappings assume
 
-No SIEM schema was tested. Query languages cannot apply NFKC or collapse whitespace at search time,
-and cannot join every string inside a JSON value. So a converted rule names a field that an ingest
-pipeline must compute exactly as [rule-format.md](rule-format.md) defines it, such as
-`adg.content.text__nfkc_casefold_collapse_whitespace` or
-`gen_ai.tool.call.arguments.__all_strings`. The regex itself is the native one, unchanged. A
-deployment without those fields will not match what the native rule matches.
+No SIEM schema was tested and no such pipeline exists. Query languages cannot apply NFKC or collapse
+whitespace at search time, and cannot join every string inside a JSON value. So a converted rule
+names a field that an ingest pipeline must compute exactly as [rule-format.md](rule-format.md)
+defines it, such as `adg.content.text__nfkc_casefold_collapse_whitespace` or
+`gen_ai.tool.call.arguments__all_strings`. For those rules, converted means the regex moved to the
+query and the normalization moved to a pipeline nobody has built. Each generated file names its
+required fields, and `FIELD_MAPPINGS.md` says what each must hold, including that a non-string value
+leaves a regex field absent.
 
-Sigma output is checked by a round-trip test that parses each file with a pinned Sigma library and
-compares the regex with the native rule. That shows the file is valid Sigma. It does not show that
-any backend runs it correctly, and KQL, SPL and ES|QL output has no such check.
+Sigma regexes assume an unanchored search in PCRE style, and the Sigma files say so. A backend that
+anchors them or uses Lucene syntax is not faithful. No Sigma backend has been run.
+
+## What is checked
+
+A round-trip test parses each generated Sigma file with a pinned Sigma library, forces its condition
+to parse, and compares every regex with the native rule. Another test pins the exact condition and
+filter text of every generated file against the native logic. That shows the files say what was
+meant and that the Sigma is valid. It does not show that any SIEM or backend runs them correctly.

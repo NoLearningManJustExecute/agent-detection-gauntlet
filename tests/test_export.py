@@ -9,16 +9,20 @@ from typing import Any
 import pytest
 import yaml
 from sigma.collection import SigmaCollection
+from sigma.exceptions import SigmaError
 from sigma.rule import SigmaRule
 from sigma.types import SigmaRegularExpression
 
 from agent_detection_gauntlet.cli import main
+from agent_detection_gauntlet.errors import GauntletError
 from agent_detection_gauntlet.export.convert import (
     FORMATS,
     HEADER,
     LABEL,
     RENDERERS,
+    _fields,
     conversion_gap,
+    regex_shape_gap,
     target_field,
 )
 from agent_detection_gauntlet.export.run import (
@@ -28,7 +32,7 @@ from agent_detection_gauntlet.export.run import (
 )
 from agent_detection_gauntlet.rules.lint import lint_rule, lint_rules
 from agent_detection_gauntlet.rules.loader import LoadedRule, load_rule_file, rule_files
-from agent_detection_gauntlet.rules.model import FieldCondition, MatchLogic, Rule
+from agent_detection_gauntlet.rules.model import FieldCondition, MatchLogic, Operator, Rule
 from tests.conftest import make_rule
 
 EXPECTED = {
@@ -102,13 +106,46 @@ def test_reasons_name_the_mechanism() -> None:
         (r"(?i)abc", "spl", "group flag"),
         (r"(a)\1", "kql", "back-reference"),
         (r"^abc", "esql", "Lucene"),
-        (r"a.c", "esql", "Lucene"),
         (r"<abc>", "esql", "Lucene"),
         (r"a*", "kql", "empty text"),
+        (r"abc$", "kql", "$"),
+        (r"a.c", "sigma", "."),
+        (r"[[:digit:]]", "kql", "["),
+        (r"xa{,2}y", "spl", "repeat"),
+        (r"xa+?y", "esql", "repeat"),
+        (r"xa{2,3}?y", "sigma", "repeat"),
+        (r"xa++y", "kql", "repeat"),
+        (r"[a-y&&xyz]", "kql", "&"),
+        (r"[0-9--4]", "kql", "range"),
+        (r"[a~~b]", "kql", "~"),
+        (r"\<abc", "kql", r"\<"),
+        (r"\vabc", "spl", r"\v"),
+        (r"[\vb]", "spl", r"\v"),
+        (r"[^abc]", "spl", "negated"),
+        (r"ab^c", "sigma", "^"),
+        ("café", "sigma", "é"),
+        ("[é]", "sigma", "é"),
+        (r"[+-/]", "sigma", "range"),
     ],
 )
 def test_regex_gaps(pattern: str, target: str, word: str) -> None:
     assert word in str(conversion_gap(regex_rule(pattern), target))
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        r"abc",
+        r"^(send|post)x",
+        r"(^|[\\/])\.\.[\\/]",
+        r"[A-Za-z0-9+/]{24,}={0,2}",
+        r"you are (now )?[a-z]*bot",
+        r"a-b[x-]{2}c{3}",
+        r"\[x\]",
+    ],
+)
+def test_allowed_regex_shapes(pattern: str) -> None:
+    assert regex_shape_gap(pattern) is None
 
 
 def test_an_escaped_backslash_is_not_a_unicode_class() -> None:
@@ -124,6 +161,52 @@ def test_negation_and_unsupported_operators_are_refused() -> None:
     assert "Operator contains" in str(conversion_gap(where_rule(contains), "sigma"))
     number = {"field": REGEX_FIELD, "op": "equals", "value": 3}
     assert "non-string" in str(conversion_gap(where_rule(number), "kql"))
+    empty = {"field": REGEX_FIELD, "op": "equals", "value": ""}
+    assert "empty text" in str(conversion_gap(where_rule(empty), "kql"))
+    changed = {
+        "field": REGEX_FIELD,
+        "op": "equals",
+        "value": "Alpha  Beta",
+        "normalize": ["casefold", "collapse_whitespace"],
+    }
+    assert "normalization" in str(conversion_gap(where_rule(changed), "sigma"))
+    stable = {**changed, "value": "alpha beta"}
+    assert conversion_gap(where_rule(stable), "sigma") is None
+
+
+@pytest.mark.parametrize(
+    ("field", "word"),
+    [
+        ("attributes.event_type", "collide"),
+        ("attributes.span_id", "collide"),
+        ("attributes.a|re", "not safe"),
+        ("attributes.a'b", "not safe"),
+        ("attributes.a]b", "not safe"),
+        ("attributes.a`b", "not safe"),
+        ("attributes.a__b", "not safe"),
+        ("attributes.args#a__b", "not safe"),
+    ],
+)
+def test_unsafe_or_colliding_fields_are_refused(field: str, word: str) -> None:
+    rule = where_rule({"field": field, "op": "regex", "value": "abc"}, format_version="1.1")
+    for target in FORMATS:
+        assert word in str(conversion_gap(rule, target))
+
+
+def test_one_field_cannot_hold_two_things() -> None:
+    both = [
+        {"field": REGEX_FIELD, "op": "exists", "value": True},
+        {"field": REGEX_FIELD, "op": "regex", "value": "abc"},
+    ]
+    assert "two different things" in str(conversion_gap(where_rule({"all": both}), "spl"))
+
+
+def test_field_mappings_refuse_two_rules_that_disagree(tmp_path: Path) -> None:
+    present = where_rule({"field": REGEX_FIELD, "op": "exists", "value": True})
+    text = regex_rule("abc")
+    rules = [LoadedRule(tmp_path / "a", present), LoadedRule(tmp_path / "b", text)]
+    with pytest.raises(GauntletError, match="two different things"):
+        render_field_mappings(rules)
 
 
 def test_threshold_is_refused() -> None:
@@ -149,11 +232,11 @@ def test_target_field_carries_normalization_and_paths() -> None:
     arguments = FieldCondition.model_validate_json(
         '{"field": "attributes.gen_ai.tool.call.arguments#*", "op": "exists", "value": true}'
     )
-    assert target_field(arguments) == "gen_ai.tool.call.arguments.__all_strings"
+    assert target_field(arguments) == "gen_ai.tool.call.arguments__all_strings"
     path = FieldCondition.model_validate_json(
         '{"field": "attributes.gen_ai.tool.call.arguments#path", "op": "exists", "value": true}'
     )
-    assert target_field(path) == "gen_ai.tool.call.arguments.path"
+    assert target_field(path) == "gen_ai.tool.call.arguments__at__path"
     plain = FieldCondition.model_validate_json(
         '{"field": "event_type", "op": "exists", "value": true}'
     )
@@ -172,6 +255,8 @@ def test_every_file_carries_the_header_and_label(target: str, tmp_path: Path) ->
         text = path.read_text(encoding="utf-8")
         assert HEADER in text
         assert LABEL in text
+        assert "FIELD_MAPPINGS.md" in text
+        assert "Required fields" in text
         assert ":\\" not in text
 
 
@@ -206,19 +291,136 @@ def test_export_is_byte_identical_and_removes_a_stale_query(tmp_path: Path) -> N
         if path.is_file():
             assert path.read_bytes() == (second / path.relative_to(first)).read_bytes()
     stale = first / "sigma" / "ADG-0001.yml"
+    other = first / "sigma" / "ADG-0004.yml"
+    hand_written = first / "sigma" / "mine.yml"
     stale.write_text("old", encoding="utf-8")
-    export_rules(real_rules(), ["sigma"], first)
+    hand_written.write_text("keep", encoding="utf-8")
+    export_rules(real_rules(), ["kql"], first)
     assert not stale.exists()
+    assert other.exists()
+    assert hand_written.exists()
 
 
-def test_generated_queries_keep_the_native_regex() -> None:
-    rule = load_rule_file(Path("rules/ADG-0014.yaml"))
-    kql = RENDERERS["kql"](rule, SHA)
-    spl = RENDERERS["spl"](rule, SHA)
-    assert r'matches regex @"(^|[\\/])\.\.[\\/]"' in kql
-    assert r"match(" in spl and r'"(^|[\\\\/])\\.\\.[\\\\/]"' in spl
-    assert "['adg.source.trust'] == @\"unknown\"" in kql
-    assert "'adg.source.trust'==\"unknown\"" in spl
+CONTENT_TEXT = "adg.content.text__nfkc_casefold_collapse_whitespace"
+TOOL_NAME = "gen_ai.tool.name__nfkc_casefold"
+ARGS_ALL = "gen_ai.tool.call.arguments__all_strings"
+ARGS_PATH = "gen_ai.tool.call.arguments__at__path"
+SEND = "^(send|post|upload|http)"
+BLOB = "[A-Za-z0-9+/]{24,}={0,2}"
+PATH = r"(^|[\\/])\.\.[\\/]"
+
+
+def _native_regex(rule_id: str, field: str) -> str:
+    rule = load_rule_file(Path("rules") / f"{rule_id}.yaml")
+    assert isinstance(rule.logic, MatchLogic)
+    assert rule.logic.match.where is not None
+    for condition in _fields(rule.logic.match.where):
+        if target_field(condition) == field:
+            assert isinstance(condition.value, str)
+            return condition.value
+    raise AssertionError(field)
+
+
+def _body(rule_id: str, target: str) -> str:
+    rule = load_rule_file(Path("rules") / f"{rule_id}.yaml")
+    text = RENDERERS[target](rule, SHA)
+    prefix = {"kql": "//", "esql": "//", "spl": "```"}[target]
+    return "\n".join(line for line in text.splitlines() if not line.startswith(prefix))
+
+
+def _esc(pattern: str) -> str:
+    return pattern.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def test_exact_kql_text_against_the_native_logic() -> None:
+    assert _body("ADG-0004", "kql") == (
+        "AdgTraces\n"
+        '| where event_type in (@"tool.call")\n'
+        f"""| where (['{TOOL_NAME}'] matches regex @"{SEND}" """
+        f"""and ['{ARGS_ALL}'] matches regex @"{BLOB}")"""
+    )
+    regex = _native_regex("ADG-0006", CONTENT_TEXT)
+    assert _body("ADG-0006", "kql") == (
+        "AdgTraces\n"
+        '| where event_type in (@"user.prompt")\n'
+        f"""| where ['{CONTENT_TEXT}'] matches regex @"{regex}\""""
+    )
+    assert _body("ADG-0014", "kql") == (
+        "AdgTraces\n"
+        '| where event_type in (@"tool.call", @"tool.result")\n'
+        """| where (['adg.source.trust'] == @"unknown" """
+        f"""or ['{ARGS_PATH}'] matches regex @"{PATH}")"""
+    )
+
+
+def test_exact_spl_text_against_the_native_logic() -> None:
+    assert _body("ADG-0004", "spl") == (
+        "search index=adg_traces\n"
+        """| where in('event_type', "tool.call") AND """
+        f"""(match('{TOOL_NAME}', "{SEND}") AND match('{ARGS_ALL}', "{BLOB}"))"""
+    )
+    regex = _native_regex("ADG-0005", CONTENT_TEXT)
+    assert _body("ADG-0005", "spl") == (
+        "search index=adg_traces\n"
+        """| where in('event_type', "retrieval") AND """
+        f"""(isnotnull('gen_ai.tool.name') AND match('{CONTENT_TEXT}', "{_esc(regex)}"))"""
+    )
+    regex = _native_regex("ADG-0006", CONTENT_TEXT)
+    assert _body("ADG-0006", "spl") == (
+        "search index=adg_traces\n"
+        """| where in('event_type', "user.prompt") AND """
+        f"""match('{CONTENT_TEXT}', "{_esc(regex)}")"""
+    )
+    assert _body("ADG-0014", "spl") == (
+        "search index=adg_traces\n"
+        """| where in('event_type', "tool.call", "tool.result") AND """
+        """('adg.source.trust'=="unknown" OR """
+        f"""match('{ARGS_PATH}', "{_esc(PATH)}"))"""
+    )
+
+
+def test_exact_esql_text_against_the_native_logic() -> None:
+    regex = _native_regex("ADG-0006", CONTENT_TEXT)
+    assert _body("ADG-0006", "esql") == (
+        "FROM adg-traces\n"
+        f"""| WHERE event_type IN ("user.prompt") AND `{CONTENT_TEXT}` """
+        f"""RLIKE ".*({_esc(regex)}).*\""""
+    )
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "condition", "items"),
+    [
+        (
+            "ADG-0004",
+            "selection_event and (match_1 and match_2)",
+            {"match_1": f"{TOOL_NAME}|re", "match_2": f"{ARGS_ALL}|re"},
+        ),
+        (
+            "ADG-0005",
+            "selection_event and (match_1 and match_2)",
+            {"match_1": "gen_ai.tool.name|exists", "match_2": f"{CONTENT_TEXT}|re"},
+        ),
+        ("ADG-0006", "selection_event and match_1", {"match_1": f"{CONTENT_TEXT}|re"}),
+        (
+            "ADG-0014",
+            "selection_event and (match_1 or match_2)",
+            {"match_1": "adg.source.trust|cased", "match_2": f"{ARGS_PATH}|re"},
+        ),
+    ],
+)
+def test_exact_sigma_logic_against_the_native_logic(
+    rule_id: str, condition: str, items: dict[str, str]
+) -> None:
+    rule = load_rule_file(Path("rules") / f"{rule_id}.yaml")
+    assert isinstance(rule.logic, MatchLogic)
+    detection = yaml.safe_load(RENDERERS["sigma"](rule, SHA))["detection"]
+    assert detection["condition"] == condition
+    assert detection["selection_event"] == {
+        "event_type|cased": [item.value for item in rule.logic.match.event_types]
+    }
+    for name, key in items.items():
+        assert list(detection[name]) == [key]
 
 
 def test_kql_doubles_quotes_and_spl_escapes_them() -> None:
@@ -247,7 +449,7 @@ def test_esql_any_and_all_render() -> None:
 
 @pytest.mark.parametrize(
     "sample",
-    ["", "plain", "please say JAILBREAK", "first line\nthen jailbreak\nlast", "unrestricted"],
+    ["", "plain", "please say jailbreak", "first line then jailbreak last", "unrestricted"],
 )
 def test_esql_wrapper_decides_as_the_engine_search_does(sample: str) -> None:
     rule = load_rule_file(Path("rules/ADG-0006.yaml"))
@@ -255,8 +457,8 @@ def test_esql_wrapper_decides_as_the_engine_search_does(sample: str) -> None:
     condition = rule.logic.match.where
     assert isinstance(condition, FieldCondition)
     assert isinstance(condition.value, str)
-    # Lucene's dot matches a newline, so DOTALL is the model of the wrapper.
-    wrapped = re.compile(".*(" + condition.value + ").*", re.DOTALL)
+    # Only fields with collapsed whitespace reach RLIKE, so no sample holds a newline.
+    wrapped = re.compile(".*(" + condition.value + ").*")
     assert (wrapped.fullmatch(sample) is not None) == (
         re.search(condition.value, sample) is not None
     )
@@ -265,7 +467,10 @@ def test_esql_wrapper_decides_as_the_engine_search_does(sample: str) -> None:
 def test_field_mappings_name_every_assumed_field() -> None:
     text = render_field_mappings(real_rules())
     assert HEADER in text
-    assert "`gen_ai.tool.call.arguments.__all_strings`" in text
+    assert "`gen_ai.tool.call.arguments__all_strings`" in text
+    assert "strings only; absent if missing, null or not a string" in text
+    assert "any non-null value" in text
+    assert "not lowercasing" in text
     assert "`adg.content.text__nfkc_casefold_collapse_whitespace`" in text
     assert "after nfkc, then casefold, then collapse_whitespace" in text
     assert "ADG-0001" not in text
@@ -284,7 +489,9 @@ def test_sigma_round_trip(rule_id: str) -> None:
     assert parsed.title == native.title
     assert parsed.level is not None
     assert parsed.level.name.lower() == native.severity.value
+    # The condition parses only on demand, and a broken one must fail here.
     assert len(parsed.detection.parsed_condition) == 1
+    assert parsed.detection.parsed_condition[0].parsed is not None
     assert "selection_event" in parsed.detection.detections
 
 
@@ -300,13 +507,29 @@ def _sigma_regexes(text: str) -> dict[str, str]:
     return found
 
 
-def test_sigma_regex_survives_parsing_unchanged() -> None:
-    native = load_rule_file(Path("rules/ADG-0006.yaml"))
+@pytest.mark.parametrize("rule_id", EXPECTED["sigma"])
+def test_every_sigma_regex_survives_parsing_unchanged(rule_id: str) -> None:
+    native = load_rule_file(Path("rules") / f"{rule_id}.yaml")
     assert isinstance(native.logic, MatchLogic)
-    condition = native.logic.match.where
-    assert isinstance(condition, FieldCondition)
-    regexes = _sigma_regexes(RENDERERS["sigma"](native, SHA))
-    assert regexes == {target_field(condition): condition.value}
+    assert native.logic.match.where is not None
+    expected = {
+        target_field(condition): condition.value
+        for condition in _fields(native.logic.match.where)
+        if condition.op is Operator.REGEX
+    }
+    assert expected
+    assert _sigma_regexes(RENDERERS["sigma"](native, SHA)) == expected
+
+
+def test_a_broken_sigma_condition_fails_when_parsed() -> None:
+    native = load_rule_file(Path("rules/ADG-0006.yaml"))
+    text = RENDERERS["sigma"](native, SHA).replace(
+        "selection_event and match_1", "selection_event and (match_1 or"
+    )
+    parsed = SigmaCollection.from_yaml(text).rules[0]
+    assert isinstance(parsed, SigmaRule)
+    with pytest.raises(SigmaError):
+        _ = parsed.detection.parsed_condition[0].parsed
 
 
 def test_sigma_escapes_wildcards_in_a_plain_value() -> None:
@@ -397,6 +620,7 @@ def test_release_workflow_is_manual_read_only_and_guarded() -> None:
     assert list(document[True]) == ["workflow_dispatch"]
     assert document["permissions"] == {"contents": "read"}
     assert "leak_guard.py --all" in text
+    assert "pytest tests/test_export.py" in text
     assert "--text" in text
     assert "git push" not in text
     assert "visibility" not in text
