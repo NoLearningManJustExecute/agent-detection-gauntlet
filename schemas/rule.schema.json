@@ -62,6 +62,85 @@
       "title": "AnyCondition",
       "type": "object"
     },
+    "BaselineLogic": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline": {
+          "$ref": "#/$defs/BaselineSpec"
+        }
+      },
+      "required": [
+        "baseline"
+      ],
+      "title": "BaselineLogic",
+      "type": "object"
+    },
+    "BaselineSpec": {
+      "additionalProperties": false,
+      "description": "Compare a trace with a statistic fitted on dev benign traces. See docs/engine.md.",
+      "properties": {
+        "key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key"
+        },
+        "match": {
+          "$ref": "#/$defs/EventMatch"
+        },
+        "max_rate": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Rate"
+        },
+        "percentile": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Percentile"
+        },
+        "statistic": {
+          "$ref": "#/$defs/BaselineStatistic"
+        }
+      },
+      "required": [
+        "statistic",
+        "match"
+      ],
+      "title": "BaselineSpec",
+      "type": "object"
+    },
+    "BaselineStatistic": {
+      "enum": [
+        "chain_length",
+        "rare_transition"
+      ],
+      "title": "BaselineStatistic",
+      "type": "string"
+    },
     "EventMatch": {
       "additionalProperties": false,
       "description": "Select single events: an event type filter plus an optional condition tree.",
@@ -150,6 +229,63 @@
         "value"
       ],
       "title": "FieldCondition",
+      "type": "object"
+    },
+    "FittedBaseline": {
+      "additionalProperties": false,
+      "description": "What `gauntlet fit-baselines` computed. Written by the command, never by hand.",
+      "properties": {
+        "command": {
+          "minLength": 1,
+          "title": "Command",
+          "type": "string"
+        },
+        "population": {
+          "const": "dev benign",
+          "title": "Population",
+          "type": "string"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        },
+        "traces": {
+          "minimum": 1,
+          "title": "Traces",
+          "type": "integer"
+        },
+        "transitions": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transitions"
+        }
+      },
+      "required": [
+        "command",
+        "population",
+        "traces"
+      ],
+      "title": "FittedBaseline",
       "type": "object"
     },
     "Fixtures": {
@@ -401,6 +537,19 @@
           "title": "Bind",
           "type": "object"
         },
+        "first_occurrence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1.1: an event holds this step only if no earlier event matching the step has the same value of this field.",
+          "title": "First Occurrence"
+        },
         "match": {
           "$ref": "#/$defs/EventMatch"
         },
@@ -520,8 +669,30 @@
       "title": "Description",
       "type": "string"
     },
+    "fitted": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FittedBaseline"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "1.1: baseline logic only. Null until `gauntlet fit-baselines` has run."
+    },
     "fixtures": {
       "$ref": "#/$defs/Fixtures"
+    },
+    "format_version": {
+      "default": "1.0",
+      "description": "Rule format. 1.1 adds value paths, first_occurrence and baseline logic.",
+      "enum": [
+        "1.0",
+        "1.1"
+      ],
+      "title": "Format Version",
+      "type": "string"
     },
     "hypothesis": {
       "minLength": 1,
@@ -552,6 +723,9 @@
         },
         {
           "$ref": "#/$defs/ThresholdLogic"
+        },
+        {
+          "$ref": "#/$defs/BaselineLogic"
         }
       ],
       "title": "Logic"

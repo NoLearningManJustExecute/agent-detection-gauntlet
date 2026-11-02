@@ -14,6 +14,8 @@ from agent_detection_gauntlet.corpus.card import render as render_card
 from agent_detection_gauntlet.corpus.verify import require_valid
 from agent_detection_gauntlet.engine.executor import scan
 from agent_detection_gauntlet.errors import GauntletError
+from agent_detection_gauntlet.firewall import refuse_heldout, require_clearance
+from agent_detection_gauntlet.fit import fit_baselines
 from agent_detection_gauntlet.io.jsonl import pretty_json, read_jsonl, write_jsonl, write_text
 from agent_detection_gauntlet.io.labels import load_labels
 from agent_detection_gauntlet.io.traces import load_traces
@@ -24,12 +26,14 @@ from agent_detection_gauntlet.metrics.compute import (
 )
 from agent_detection_gauntlet.metrics.report import InputRole
 from agent_detection_gauntlet.paths import set_repo_root, shown_path
+from agent_detection_gauntlet.rules.docgen import render as render_rules_doc
 from agent_detection_gauntlet.rules.validator import ValidationReport, validate_rules
 from agent_detection_gauntlet.schema.detection import Detection
 from agent_detection_gauntlet.schema.export import export_schemas, schema_drift
-from agent_detection_gauntlet.schema.labels import Split
+from agent_detection_gauntlet.schema.labels import LabelSource, Split
 
-DEFAULT_FIXTURES = Path("datasets/fixtures/traces")
+# Rule fixtures: the synthetic traces and the dev split at the default content-reference K.
+DEFAULT_FIXTURES = [Path("datasets/fixtures/traces"), Path("datasets/corpus/dev/k24")]
 DEFAULT_SCHEMAS = Path("schemas")
 
 
@@ -39,6 +43,7 @@ def _print_issues(report: ValidationReport) -> None:
 
 
 def _require_valid_rules(rules_dir: Path, fixtures: Sequence[Path]) -> ValidationReport:
+    refuse_heldout(fixtures, "rule fixtures")
     report = validate_rules(rules_dir, fixtures, load_catalog())
     _print_issues(report)
     if not report.ok:
@@ -56,6 +61,7 @@ def cmd_validate_traces(args: argparse.Namespace) -> int:
 
 
 def cmd_validate_rules(args: argparse.Namespace) -> int:
+    refuse_heldout(args.fixtures, "rule fixtures")
     report = validate_rules(args.directory, args.fixtures, load_catalog())
     _print_issues(report)
     if not report.ok:
@@ -66,6 +72,7 @@ def cmd_validate_rules(args: argparse.Namespace) -> int:
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
+    require_clearance("scan", args.traces)
     report = _require_valid_rules(args.rules, args.fixtures)
     trace_set = load_traces(args.traces)
     detections = scan([loaded.rule for loaded in report.rules], trace_set.traces)
@@ -78,13 +85,19 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
 
 def cmd_metrics(args: argparse.Namespace) -> int:
+    labels = load_labels([args.labels])
+    split = Split(args.split)
+    # Synthetic fixtures carry heldout labels too; only corpus labels are the real split.
+    scores_corpus = split is Split.HELDOUT and any(
+        label.split is Split.HELDOUT and label.source is not LabelSource.SYNTHETIC
+        for label in labels.values()
+    )
+    require_clearance("metrics", args.traces, scoring_split=scores_corpus)
     report = _require_valid_rules(args.rules, args.fixtures)
     trace_set = load_traces(args.traces)
-    labels = load_labels([args.labels])
     detections = [record for _, record in read_jsonl(args.detections, Detection)]
     rules = [loaded.rule for loaded in report.rules]
     check_detections_reproduce(detections, scan(rules, trace_set.traces))
-    split = Split(args.split)
     files: list[tuple[InputRole, Path]] = [("rule", loaded.path) for loaded in report.rules]
     files += [("trace", path) for path in trace_set.files]
     files += [("detections", args.detections), ("labels", args.labels)]
@@ -124,6 +137,35 @@ def cmd_export_schemas(args: argparse.Namespace) -> int:
 
 DEFAULT_CORPUS = Path("datasets/corpus")
 DEFAULT_CARD = Path("docs/dataset.md")
+DEFAULT_RULES = Path("rules")
+DEFAULT_DETECTIONS_DOC = Path("docs/detections.md")
+DEFAULT_FIT_TRACES = [DEFAULT_CORPUS / "dev" / "k24"]
+DEFAULT_FIT_LABELS = DEFAULT_CORPUS / "labels.jsonl"
+
+
+def cmd_fit_baselines(args: argparse.Namespace) -> int:
+    outcome = fit_baselines(args.rules, args.traces, args.labels, check=args.check)
+    if args.check and outcome.stale:
+        for path in outcome.stale:
+            print(f"error: {shown_path(path)} is out of date", file=sys.stderr)
+        print("run `gauntlet fit-baselines` and commit the result", file=sys.stderr)
+        return 1
+    print(f"ok: {outcome.fitted} baseline rule(s), {len(outcome.written)} rewritten")
+    return 0
+
+
+def cmd_rules_doc(args: argparse.Namespace) -> int:
+    text = render_rules_doc(args.rules)
+    if args.check:
+        current = args.out.read_bytes().decode("utf-8") if args.out.is_file() else None
+        if current != text:
+            print(f"{shown_path(args.out)} is out of date; run `gauntlet rules-doc`")
+            return 1
+        print("ok: detections doc matches the rules")
+        return 0
+    write_text(args.out, text)
+    print(f"ok: wrote {shown_path(args.out)}")
+    return 0
 
 
 def cmd_corpus_build(args: argparse.Namespace) -> int:
@@ -170,7 +212,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True, metavar="command")
 
-    fixtures_help = f"fixture trace files or directories (default: {DEFAULT_FIXTURES})"
+    default_fixtures = " ".join(path.as_posix() for path in DEFAULT_FIXTURES)
+    fixtures_help = f"fixture trace files or directories (default: {default_fixtures})"
 
     p = sub.add_parser("validate-traces", help="validate trace JSONL files")
     p.add_argument("paths", nargs="+", type=Path, help="trace files or directories")
@@ -178,18 +221,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("validate-rules", help="validate a directory of rules")
     p.add_argument("directory", type=Path)
-    p.add_argument(
-        "--fixtures", nargs="+", type=Path, default=[DEFAULT_FIXTURES], help=fixtures_help
-    )
+    p.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
     p.set_defaults(handler=cmd_validate_rules)
 
     p = sub.add_parser("scan", help="run rules over traces and write detections")
     p.add_argument("--rules", type=Path, required=True)
     p.add_argument("--traces", nargs="+", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
-    p.add_argument(
-        "--fixtures", nargs="+", type=Path, default=[DEFAULT_FIXTURES], help=fixtures_help
-    )
+    p.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
     p.set_defaults(handler=cmd_scan)
 
     p = sub.add_parser("metrics", help="score detections against labels")
@@ -199,15 +238,26 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--labels", type=Path, required=True)
     p.add_argument("--split", choices=[split.value for split in Split], default=Split.HELDOUT.value)
     p.add_argument("--out", type=Path, required=True)
-    p.add_argument(
-        "--fixtures", nargs="+", type=Path, default=[DEFAULT_FIXTURES], help=fixtures_help
-    )
+    p.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
     p.add_argument(
         "--external-basename",
         action="store_true",
         help="allow inputs outside the repository root and record only their file names",
     )
     p.set_defaults(handler=cmd_metrics)
+
+    p = sub.add_parser("fit-baselines", help="fit behavior baselines on dev benign traces")
+    p.add_argument("--rules", type=Path, default=DEFAULT_RULES)
+    p.add_argument("--traces", nargs="+", type=Path, default=DEFAULT_FIT_TRACES)
+    p.add_argument("--labels", type=Path, default=DEFAULT_FIT_LABELS)
+    p.add_argument("--check", action="store_true", help="fail if a fitted rule is out of date")
+    p.set_defaults(handler=cmd_fit_baselines)
+
+    p = sub.add_parser("rules-doc", help="render the detection catalog from the rules")
+    p.add_argument("--rules", type=Path, default=DEFAULT_RULES)
+    p.add_argument("--out", type=Path, default=DEFAULT_DETECTIONS_DOC)
+    p.add_argument("--check", action="store_true", help="fail if the doc is out of date")
+    p.set_defaults(handler=cmd_rules_doc)
 
     corpus = sub.add_parser("corpus", help="build, verify or describe the frozen corpus")
     csub = corpus.add_subparsers(dest="corpus_command", required=True, metavar="action")

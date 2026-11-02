@@ -22,10 +22,11 @@ in `src/agent_detection_gauntlet/rules/model.py`, and the generated JSON Schema 
 
 ## Top-level fields
 
-All fields are required.
+All fields are required, except `format_version` and `fitted`.
 
 | Field | Type | Constraints |
 | --- | --- | --- |
+| `format_version` | string | Optional. `1.0` (the default) or `1.1`. Value paths, `first_occurrence` and `baseline` logic need `1.1`. A rule without this field keeps meaning what it always did. |
 | `id` | string | `^ADG-[0-9]{4}$`. Unique across the rules directory. |
 | `title` | string | Non-empty, not whitespace only. |
 | `version` | string | Semantic version: `MAJOR.MINOR.PATCH`, numbers without leading zeros, optional `-prerelease` and `+build`. |
@@ -36,9 +37,10 @@ All fields are required.
 | `hypothesis` | string | Non-empty, not whitespace only. Why the rule should work, stated so it can be tested. |
 | `mappings` | object | See [Mappings](#mappings). |
 | `telemetry` | list of event types | Non-empty, no repeats. Must include every event type the logic uses. May list more. |
-| `logic` | object | Exactly one of `match`, `sequence`, `threshold`. See [Logic](#logic). |
+| `logic` | object | Exactly one of `match`, `sequence`, `threshold`, `baseline`. See [Logic](#logic). |
 | `limitations` | list of strings | Non-empty. Each entry non-empty and not whitespace only. |
 | `fixtures` | object | `tp` and `fp`, see [Fixtures](#fixtures). |
+| `fitted` | object | Baseline logic only, written by `gauntlet fit-baselines`. See [`baseline`](#baseline). Always the last key in the file. |
 
 Event types are the trace `event_type` values: `session.start`, `user.prompt`, `retrieval`,
 `llm.request`, `llm.response`, `tool.call`, `tool.result`, `guardrail.action`, `session.end`.
@@ -84,6 +86,7 @@ logic:
           - op: equals | contains | derives_from
             bound: <name>        # a name bound by an earlier step
             field: <field>       # required for equals and contains, forbidden for derives_from
+        first_occurrence: <field>  # optional, format 1.1
     within_events: <int>         # optional, >= 2 and >= number of steps
     within_seconds: <number>     # optional, > 0
 ```
@@ -98,6 +101,8 @@ Constraints:
   `adg.content.ref` from the current event.
 - `within_events` is an integer of at least 2 and at least the number of steps.
 - `within_seconds` is a number greater than 0.
+- With `first_occurrence`, an event holds the step only if no earlier event matching the step's
+  `match` has the same value of that field. An event without the field does not hold the step.
 
 ### `threshold`
 
@@ -113,6 +118,32 @@ logic:
 Counts matching events in a trace (or distinct values of `distinct` among them) and compares the
 count with `value`. `op` is limited to `gte`, `gt` and `eq`, and `value` is at least 1; the
 reason is given in [engine.md](engine.md#threshold).
+
+### `baseline`
+
+Format 1.1. Compares a trace with a statistic fitted on dev benign traces.
+
+```yaml
+logic:
+  baseline:
+    statistic: chain_length | rare_transition
+    match: <event match>
+    percentile: <int>      # chain_length only, 1 to 100
+    key: <field>           # rare_transition only
+    max_rate: <number>     # rare_transition only, above 0 and at most 1
+fitted:                    # written by the command, never by hand
+  command: gauntlet fit-baselines --rules rules --traces datasets/corpus/dev/k24 --labels ...
+  population: dev benign
+  traces: <int>
+  threshold: <int>         # chain_length
+  transitions:             # rare_transition: counts of each pair of consecutive keys
+    <start> -> read_file: <int>
+```
+
+`gauntlet fit-baselines` computes `fitted` and rewrites only that block of the rule file. It
+reads the labels to select benign traces, accepts dev traces only, and refuses held-out paths
+whatever the environment says. `gauntlet fit-baselines --check` fails when a rule's `fitted` block
+is out of date. A baseline rule with no `fitted` block fails validation.
 
 ## Conditions
 
@@ -139,11 +170,15 @@ not contain other keys. Any other mapping is a field comparison.
 | `span_id` | The event's span id. |
 | `parent_span_id` | The parent span id (missing for a root event). |
 | `attributes.<key>` | The attribute whose full key is `<key>`, for example `attributes.gen_ai.tool.name` or `attributes.adg.source.trust`. |
+| `attributes.<key>#<path>` | Format 1.1. A value inside a structured attribute, for example `attributes.gen_ai.tool.call.arguments#to` or `...#items.0.name`. |
+| `attributes.<key>#*` | Format 1.1. Every string inside the value, joined with newlines: object keys in sorted order, list items in order. Missing if there are none. |
 
-`<key>` is the whole attribute key as written in the trace. There is no path syntax into object
-or list values: `attributes.gen_ai.tool.call.arguments` returns the whole arguments object.
-`trace_id` and `timestamp` cannot be referenced. `<key>` must be non-empty with no leading or
-trailing whitespace. A JSON `null` value counts as missing.
+`<key>` is the whole attribute key as written in the trace, and may hold dots, which is why a path
+starts after `#`. A path is dot-separated object keys and list indexes made of letters, digits,
+`_` and `-`. A path that reaches nothing is missing. `attributes.gen_ai.tool.call.arguments`
+without a path returns the whole arguments object. `trace_id` and `timestamp` cannot be
+referenced. `<key>` must be non-empty with no leading or trailing whitespace. A JSON `null` value
+counts as missing.
 
 ### Operators
 
@@ -214,6 +249,9 @@ During validation:
 All current catalog entries are unverified. Verification against the primary sources is
 scheduled for Phase 7, so every rule currently produces one warning per mapping ID.
 
+`gauntlet rules-doc` renders [detections.md](detections.md) from the rule files, and CI fails when
+the two disagree.
+
 ## Fixtures
 
 ```yaml
@@ -224,7 +262,9 @@ fixtures:
 
 Both lists are required, non-empty, use the trace identifier pattern, and do not repeat an ID.
 A trace may not be in both lists. The traces are looked up in the fixture trace set (default
-`datasets/fixtures/traces`, overridable with `--fixtures`).
+`datasets/fixtures/traces` and `datasets/corpus/dev/k24`, overridable with `--fixtures`). Fixtures
+are never held-out: a held-out path given to `--fixtures` is refused, whatever the environment
+says.
 
 ## Validator checks
 
@@ -236,6 +276,8 @@ checks first and refuse to continue if any error is found.
    holds only plain JSON data.
 3. Each file validates against the rule model: every field constraint above, plus these
    cross-field checks:
+   - features of format 1.1 need `format_version: "1.1"`;
+   - `fitted` is present only on baseline logic and fits its statistic;
    - every event type used in `logic` is listed in `telemetry`;
    - `fixtures.tp` and `fixtures.fp` do not overlap;
    - sequence step names are unique, bind names are bound once, every `require` names a value
@@ -244,10 +286,11 @@ checks first and refuse to continue if any error is found.
    - each field condition's `value` fits its operator and each `regex` compiles.
 4. The file name matches the rule id.
 5. Rule ids are unique across the directory.
-6. Every mapping ID is in the catalog (error otherwise), and is verified (warning otherwise).
-7. The fixture traces load cleanly under the full trace rules in [schema.md](schema.md).
-8. Every `tp` and `fp` trace id exists among the fixture traces.
-9. The rule produces at least one hit on every `tp` trace and no hit on any `fp` trace.
+6. A baseline rule has been fitted.
+7. Every mapping ID is in the catalog (error otherwise), and is verified (warning otherwise).
+8. The fixture traces load cleanly under the full trace rules in [schema.md](schema.md).
+9. Every `tp` and `fp` trace id exists among the fixture traces.
+10. The rule produces at least one hit on every `tp` trace and no hit on any `fp` trace.
 
 Problems are printed to standard error as `error: <path>: <message>` or
 `warning: <path>: <message>`. The command exits with status 1 if there is at least one error.
@@ -259,7 +302,7 @@ Problems are printed to standard error as `error: <path>: <message>` or
 ```yaml
 id: ADG-0001
 title: Untrusted retrieved content flows into an external send tool call
-version: 0.1.0
+version: 0.1.1
 status: experimental
 tier: sequence
 severity: high
@@ -332,9 +375,11 @@ limitations:
 fixtures:
   tp:
     - syn-0001
+    # plus a dev trace
   fp:
     - syn-0002
     - syn-0003
+    # plus dev traces, including hard negatives
 ```
 
 How it reads:
@@ -350,7 +395,7 @@ How it reads:
 - **`telemetry`** lists both event types the steps use. Omitting either would fail validation.
 - **Fixtures:** `syn-0001` has the full chain and must fire. `syn-0002` has the same flow but a
   trusted retrieval. `syn-0003` has an untrusted retrieval and a send, but the send does not
-  derive from the retrieval. Neither may fire.
+  derive from the retrieval. Neither may fire. The rule also names dev traces, listed in the file.
 - **Mappings** reference one ID per framework family that applies. No host action occurs, so
   `attack` is empty. All three IDs are currently unverified catalog entries, so validation
   prints three warnings.

@@ -1,0 +1,52 @@
+id: ADG-0006
+title: Override or concealment phrasing in the user prompt
+version: 0.1.0
+status: experimental
+tier: content
+severity: medium
+description: Fires when a user prompt claims a system role, suspends rules, asks the agent to hide
+  what it did, or asks it to decode a value before acting.
+hypothesis: Direct attacks usually have to argue the agent out of its instructions or out of telling
+  the user. Those arguments reuse recognizable phrasing, so a normalized list should catch authored
+  direct attacks and degrade on paraphrase and translation.
+mappings:
+  atlas:
+  - AML.T0051.000
+  - AML.T0054
+  owasp_llm:
+  - LLM01
+  owasp_agentic:
+  - ASI01
+  attack: []
+telemetry:
+- user.prompt
+logic:
+  match:
+    event_types:
+    - user.prompt
+    where:
+      field: attributes.adg.content.text
+      op: regex
+      normalize:
+      - nfkc
+      - casefold
+      - collapse_whitespace
+      value: ignore (all |any )?(of )?(the |your )?(previous|prior|above|earlier) (instructions|prompts?|rules)|system
+        (notice|override)|maintenance mode|you are (now )?[a-z]*bot|unrestricted|is suspended|pretend
+        (you|to)|jailbreak|do not (mention|tell|disclose|reveal)|don't (mention|tell|reveal)|mention
+        nothing|without (mentioning|telling)|base64|decode (it|this)
+limitations:
+- The phrase list is English, and most direct attacks that succeed in the dev split use ordinary requests
+  with no override wording at all.
+- Legitimate prompts about base64, or asking for a reply that does not mention something, match.
+- It says nothing about whether the agent complied.
+fixtures:
+  tp:
+  - arf-0077482a62082dbbad5c18d0
+  - arf-12f8451435af79518ae294a0
+  fp:
+  - arf-0003bc96b3a5c6cd552995df
+  - arf-01bf1977b0fca076a986ea7c
+  - arf-0019bfe6f05e6c313357146b
+  - arf-0591f21b742d9ac12eea7599
+  - arf-005b4764abe14b32ad78cc11

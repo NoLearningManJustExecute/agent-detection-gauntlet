@@ -1,0 +1,59 @@
+id: ADG-0010
+title: Secret-bearing tool call after untrusted content
+version: 0.1.0
+status: experimental
+tier: sequence
+severity: high
+description: Fires when untrusted content is followed by any tool call whose arguments are labeled
+  secret, whichever tool it is.
+hypothesis: Poisoned metadata can smuggle a secret out through a tool that looks harmless, such as
+  a search query. Requiring untrusted content first and a secret in the arguments should catch that
+  without a list of sink tools.
+mappings:
+  atlas:
+  - AML.T0051.001
+  - AML.T0057
+  owasp_llm:
+  - LLM01
+  - LLM02
+  owasp_agentic:
+  - ASI01
+  attack: []
+telemetry:
+- retrieval
+- tool.result
+- tool.call
+logic:
+  sequence:
+    steps:
+    - name: untrusted_content
+      match:
+        event_types:
+        - retrieval
+        - tool.result
+        where:
+          field: attributes.adg.source.trust
+          op: equals
+          value: untrusted
+    - name: secret_call
+      match:
+        event_types:
+        - tool.call
+        where:
+          field: attributes.adg.data.labels
+          op: contains
+          value: secret
+limitations:
+- The secret label on a tool call comes from verbatim matching against known secrets. A transformed
+  secret loses the label and the rule misses.
+- It needs no data link from the untrusted content to the call, so an unrelated secret-bearing call
+  after any untrusted read fires.
+fixtures:
+  tp:
+  - arf-2c7627ab616af6406928bed7
+  fp:
+  - arf-0003bc96b3a5c6cd552995df
+  - arf-01bf1977b0fca076a986ea7c
+  - arf-0019bfe6f05e6c313357146b
+  - arf-0591f21b742d9ac12eea7599
+  - arf-005b4764abe14b32ad78cc11

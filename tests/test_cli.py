@@ -10,7 +10,7 @@ import pytest
 
 from agent_detection_gauntlet.cli import main
 from agent_detection_gauntlet.schema.export import export_schemas, schema_drift
-from tests.conftest import FIXTURE_LABELS, FIXTURE_TRACES, REPO_ROOT, RULES_DIR
+from tests.conftest import FIXTURE_LABELS, FIXTURE_TRACES, PLUMBING_RULES, REPO_ROOT
 
 SCHEMAS_DIR = REPO_ROOT / "schemas"
 
@@ -21,13 +21,13 @@ def run_pipeline(out: Path) -> tuple[bytes, bytes]:
     metrics = out / "metrics.json"
     fixtures = ["--fixtures", str(FIXTURE_TRACES)]
     assert main(["validate-traces", str(FIXTURE_TRACES)]) == 0
-    assert main(["validate-rules", str(RULES_DIR), *fixtures]) == 0
+    assert main(["validate-rules", str(PLUMBING_RULES), *fixtures]) == 0
     assert (
         main(
             [
                 "scan",
                 "--rules",
-                str(RULES_DIR),
+                str(PLUMBING_RULES),
                 "--traces",
                 str(FIXTURE_TRACES),
                 "--out",
@@ -42,7 +42,7 @@ def run_pipeline(out: Path) -> tuple[bytes, bytes]:
             [
                 "metrics",
                 "--rules",
-                str(RULES_DIR),
+                str(PLUMBING_RULES),
                 "--traces",
                 str(FIXTURE_TRACES),
                 "--detections",
@@ -75,7 +75,7 @@ def test_full_path_from_traces_to_metrics(
     assert roles == {"rule", "trace", "detections", "labels"}
     assert "timestamp" not in metrics.decode().lower().replace("_timestamp", "")
     out = capsys.readouterr()
-    assert "ok: 77 events in 9 traces" in out.out
+    assert "ok: 86 events in 10 traces" in out.out
     assert "not yet verified" in out.err
 
 
@@ -97,7 +97,7 @@ def test_dev_split_flag(tmp_path: Path) -> None:
         [
             "metrics",
             "--rules",
-            str(RULES_DIR),
+            str(PLUMBING_RULES),
             "--traces",
             str(FIXTURE_TRACES),
             "--detections",
@@ -116,7 +116,7 @@ def test_dev_split_flag(tmp_path: Path) -> None:
     assert code == 0
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["split"] == "dev"
-    assert report["population"]["traces"] == 3
+    assert report["population"]["traces"] == 4
 
 
 def test_checked_in_schemas_match_models() -> None:
@@ -148,7 +148,9 @@ def test_errors_exit_non_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     rules = tmp_path / "rules"
     rules.mkdir()
     (rules / "ADG-0001.yaml").write_text(
-        (RULES_DIR / "ADG-0001.yaml").read_text(encoding="utf-8").replace("syn-0003", "syn-9999"),
+        (PLUMBING_RULES / "ADG-0001.yaml")
+        .read_text(encoding="utf-8")
+        .replace("syn-0003", "syn-9999"),
         encoding="utf-8",
     )
     fixtures = ["--fixtures", str(FIXTURE_TRACES)]
@@ -187,7 +189,7 @@ def test_metrics_rejects_mismatched_inputs(
         [
             "metrics",
             "--rules",
-            str(RULES_DIR),
+            str(PLUMBING_RULES),
             "--traces",
             str(FIXTURE_TRACES),
             "--detections",
@@ -211,7 +213,7 @@ def test_missing_output_directory_is_created(tmp_path: Path) -> None:
         [
             "scan",
             "--rules",
-            str(RULES_DIR),
+            str(PLUMBING_RULES),
             "--traces",
             str(FIXTURE_TRACES),
             "--out",
@@ -231,7 +233,7 @@ def test_os_error_is_reported(tmp_path: Path, capsys: pytest.CaptureFixture[str]
         [
             "scan",
             "--rules",
-            str(RULES_DIR),
+            str(PLUMBING_RULES),
             "--traces",
             str(FIXTURE_TRACES),
             "--out",
@@ -268,7 +270,7 @@ def test_metrics_rejects_partial_or_empty_detections(
             [
                 "metrics",
                 "--rules",
-                str(RULES_DIR),
+                str(PLUMBING_RULES),
                 "--traces",
                 str(FIXTURE_TRACES),
                 "--detections",

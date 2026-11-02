@@ -1,0 +1,64 @@
+format_version: '1.1'
+id: ADG-0012
+title: First use of a privileged tool after untrusted content
+version: 0.1.0
+status: experimental
+tier: behavior
+severity: medium
+description: Fires when a write, destructive or outbound tool is used for the first time in the trace
+  after untrusted content has entered it.
+hypothesis: Injected content changes what the agent does next. A privileged tool that had not been
+  used before the untrusted content arrived is a behavior change that needs no data link and no wording
+  match, so it should hold where provenance breaks.
+mappings:
+  atlas:
+  - AML.T0053
+  owasp_llm:
+  - LLM06
+  owasp_agentic:
+  - ASI02
+  attack: []
+telemetry:
+- retrieval
+- tool.result
+- tool.call
+logic:
+  sequence:
+    steps:
+    - name: untrusted_content
+      match:
+        event_types:
+        - retrieval
+        - tool.result
+        where:
+          field: attributes.adg.source.trust
+          op: equals
+          value: untrusted
+    - name: first_privileged_call
+      match:
+        event_types:
+        - tool.call
+        where:
+          field: attributes.gen_ai.tool.name
+          op: regex
+          value: ^(send|post|upload|http|write|delete|remove|update|create|move|rename|exec|run)
+          normalize:
+          - nfkc
+          - casefold
+      first_occurrence: attributes.gen_ai.tool.name
+limitations:
+- A task that legitimately reads an untrusted email and then replies fires. This is the expected false
+  positive of the rule.
+- If the tool was already used before the untrusted content arrived, a later malicious use is not
+  a first use and the rule misses it.
+- The privileged list is a name pattern, so a renamed tool is not covered.
+fixtures:
+  tp:
+  - arf-00233f2ba64534ac2415000b
+  - arf-0165b1b4516be280a771480a
+  fp:
+  - arf-0003bc96b3a5c6cd552995df
+  - arf-0c0717b377b82d6baceb9dd4
+  - arf-0019bfe6f05e6c313357146b
+  - arf-0591f21b742d9ac12eea7599
+  - arf-005b4764abe14b32ad78cc11

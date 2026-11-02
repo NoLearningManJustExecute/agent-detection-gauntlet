@@ -158,8 +158,12 @@ jobs:
         run: gauntlet export-schemas --check
       - name: Validate traces
         run: gauntlet validate-traces datasets/fixtures/traces
-      - name: Validate rules
-        run: gauntlet validate-rules rules --fixtures datasets/fixtures/traces
+      - name: Validate rules (fixtures are synthetic traces and the dev split)
+        run: gauntlet validate-rules rules
+      - name: Fitted baselines match the dev benign traces
+        run: gauntlet fit-baselines --check
+      - name: Detection catalog matches the rules
+        run: gauntlet rules-doc --check
       - name: Scan and score, run 1
         run: |
           gauntlet scan --rules rules --traces datasets/fixtures/traces --out out/detections.jsonl

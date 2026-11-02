@@ -6,3 +6,18 @@ entries:
     url: https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/
     version: "2026"
     verified: false
+  - id: LLM02
+    name: Sensitive Information Disclosure
+    url: https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/
+    version: "2026"
+    verified: false
+  - id: LLM03
+    name: Supply Chain
+    url: https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/
+    version: "2026"
+    verified: false
+  - id: LLM06
+    name: Excessive Agency
+    url: https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/
+    version: "2026"
+    verified: false

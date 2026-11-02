@@ -1,0 +1,68 @@
+id: ADG-0009
+title: Untrusted content flows into a write or send tool call
+version: 0.1.0
+status: experimental
+tier: sequence
+severity: high
+description: Fires when a write, destructive or outbound tool call derives, through adg.content.ref,
+  from content marked untrusted, whether it came from a retrieval or a tool result.
+hypothesis: Acting on injected content leaves a provenance link from the untrusted text to the action.
+  Keying on that link rather than on wording should hold under paraphrase as long as enough text is
+  copied verbatim to produce the link.
+mappings:
+  atlas:
+  - AML.T0051.001
+  - AML.T0053
+  owasp_llm:
+  - LLM01
+  - LLM06
+  owasp_agentic:
+  - ASI01
+  - ASI02
+  attack: []
+telemetry:
+- retrieval
+- tool.result
+- tool.call
+logic:
+  sequence:
+    steps:
+    - name: untrusted_content
+      match:
+        event_types:
+        - retrieval
+        - tool.result
+        where:
+          field: attributes.adg.source.trust
+          op: equals
+          value: untrusted
+      bind:
+        source_span: span_id
+    - name: write_call
+      match:
+        event_types:
+        - tool.call
+        where:
+          field: attributes.gen_ai.tool.name
+          op: regex
+          value: ^(send|post|upload|http|write|delete|remove|update|create|move|rename|exec|run)
+          normalize:
+          - nfkc
+          - casefold
+      require:
+      - op: derives_from
+        bound: source_span
+limitations:
+- adg.content.ref comes from verbatim overlap of at least K characters (K=24 here). A rewrite of the
+  untrusted text breaks the link and the rule misses.
+- A user who deliberately asks to forward untrusted content produces the same flow.
+- The write tool list is a name pattern, so a renamed tool is not covered.
+fixtures:
+  tp:
+  - arf-0165b1b4516be280a771480a
+  fp:
+  - arf-0003bc96b3a5c6cd552995df
+  - arf-01bf1977b0fca076a986ea7c
+  - arf-0019bfe6f05e6c313357146b
+  - arf-0591f21b742d9ac12eea7599
+  - arf-005b4764abe14b32ad78cc11

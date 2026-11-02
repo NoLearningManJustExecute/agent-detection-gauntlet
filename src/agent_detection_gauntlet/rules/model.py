@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     AfterValidator,
@@ -51,16 +51,25 @@ class Operator(StrEnum):
 
 TOP_LEVEL_FIELDS: frozenset[str] = frozenset({"event_type", "span_id", "parent_span_id"})
 ATTRIBUTE_PREFIX = "attributes."
+# Attribute keys hold dots, so a path into a structured value starts after this separator.
+PATH_SEPARATOR = "#"
+# The path that selects every string inside a structured value.
+ALL_STRINGS_PATH = "*"
+_VALUE_PATH = re.compile(r"\*|[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*")
 
 
 def _check_field_ref(value: str) -> str:
     if value in TOP_LEVEL_FIELDS:
         return value
-    key = value[len(ATTRIBUTE_PREFIX) :]
-    if value.startswith(ATTRIBUTE_PREFIX) and key and key == key.strip():
+    key, separator, path = value[len(ATTRIBUTE_PREFIX) :].partition(PATH_SEPARATOR)
+    path_ok = not separator or _VALUE_PATH.fullmatch(path) is not None
+    if value.startswith(ATTRIBUTE_PREFIX) and key and key == key.strip() and path_ok:
         return value
     allowed = ", ".join(sorted(TOP_LEVEL_FIELDS))
-    raise ValueError(f"field must be one of {allowed}, or attributes.<key>; got {value!r}")
+    raise ValueError(
+        f"field must be one of {allowed}, attributes.<key> or attributes.<key>#<path>; "
+        f"got {value!r}"
+    )
 
 
 FieldRef = Annotated[str, AfterValidator(_check_field_ref)]
@@ -206,6 +215,13 @@ class SequenceStep(BaseModel):
     match: EventMatch
     bind: dict[Name, FieldRef] = Field(default_factory=dict)
     require: list[Requirement] = Field(default_factory=list)
+    first_occurrence: FieldRef | None = Field(
+        default=None,
+        description=(
+            "1.1: an event holds this step only if no earlier event matching the step has the "
+            "same value of this field."
+        ),
+    )
 
 
 class SequenceSpec(BaseModel):
@@ -256,6 +272,50 @@ class ThresholdSpec(BaseModel):
     value: Annotated[int, Field(ge=1)]
 
 
+class BaselineStatistic(StrEnum):
+    CHAIN_LENGTH = "chain_length"
+    RARE_TRANSITION = "rare_transition"
+
+
+class BaselineSpec(BaseModel):
+    """Compare a trace with a statistic fitted on dev benign traces. See docs/engine.md."""
+
+    model_config = STRICT_MODEL
+
+    statistic: BaselineStatistic
+    match: EventMatch
+    key: FieldRef | None = None
+    percentile: Annotated[int, Field(ge=1, le=100)] | None = None
+    max_rate: Annotated[float, Field(gt=0, le=1)] | None = None
+
+    @model_validator(mode="after")
+    def _check_parameters(self) -> BaselineSpec:
+        if self.statistic is BaselineStatistic.CHAIN_LENGTH:
+            if self.percentile is None or self.key is not None or self.max_rate is not None:
+                raise ValueError("chain_length takes percentile, and no key or max_rate")
+        elif self.key is None or self.max_rate is None or self.percentile is not None:
+            raise ValueError("rare_transition takes key and max_rate, and no percentile")
+        return self
+
+
+class FittedBaseline(BaseModel):
+    """What `gauntlet fit-baselines` computed. Written by the command, never by hand."""
+
+    model_config = STRICT_MODEL
+
+    command: NonEmptyStr
+    population: Literal["dev benign"]
+    traces: Annotated[int, Field(ge=1)]
+    threshold: Annotated[int, Field(ge=0)] | None = None
+    transitions: dict[str, Annotated[int, Field(ge=1)]] | None = None
+
+    @model_validator(mode="after")
+    def _check_shape(self) -> FittedBaseline:
+        if (self.threshold is None) == (self.transitions is None):
+            raise ValueError("fitted holds exactly one of threshold, transitions")
+        return self
+
+
 class MatchLogic(BaseModel):
     model_config = STRICT_MODEL
 
@@ -274,7 +334,13 @@ class ThresholdLogic(BaseModel):
     threshold: ThresholdSpec
 
 
-_LOGIC_KEYS = ("match", "sequence", "threshold")
+class BaselineLogic(BaseModel):
+    model_config = STRICT_MODEL
+
+    baseline: BaselineSpec
+
+
+_LOGIC_KEYS = ("match", "sequence", "threshold", "baseline")
 
 
 def _logic_kind(value: Any) -> str | None:
@@ -287,17 +353,22 @@ def _logic_kind(value: Any) -> str | None:
         return "sequence"
     if isinstance(value, ThresholdLogic):
         return "threshold"
+    if isinstance(value, BaselineLogic):
+        return "baseline"
     return None
 
 
 Logic = Annotated[
     Annotated[MatchLogic, Tag("match")]
     | Annotated[SequenceLogic, Tag("sequence")]
-    | Annotated[ThresholdLogic, Tag("threshold")],
+    | Annotated[ThresholdLogic, Tag("threshold")]
+    | Annotated[BaselineLogic, Tag("baseline")],
     Discriminator(
         _logic_kind,
         custom_error_type="invalid_logic",
-        custom_error_message="logic must contain exactly one of: match, sequence, threshold",
+        custom_error_message=(
+            "logic must contain exactly one of: match, sequence, threshold, baseline"
+        ),
     ),
 ]
 
@@ -358,11 +429,28 @@ class Fixtures(BaseModel):
         return self
 
 
+def _uses_format_1_1(value: Any, parent: str | None = None) -> bool:
+    """Whether dumped logic holds a feature added in rule format 1.1."""
+    if isinstance(value, dict):
+        if "baseline" in value or value.get("first_occurrence") is not None:
+            return True
+        if any(PATH_SEPARATOR in ref for ref in value.get("bind", {}).values()):
+            return True
+        return any(_uses_format_1_1(item, key) for key, item in value.items() if key != "bind")
+    if isinstance(value, list):
+        return any(_uses_format_1_1(item, parent) for item in value)
+    return parent in ("field", "distinct") and isinstance(value, str) and PATH_SEPARATOR in value
+
+
 class Rule(BaseModel):
     """A detection rule."""
 
     model_config = STRICT_MODEL
 
+    format_version: Literal["1.0", "1.1"] = Field(
+        default="1.0",
+        description="Rule format. 1.1 adds value paths, first_occurrence and baseline logic.",
+    )
     id: RuleId
     title: NonEmptyStr
     version: SemVer
@@ -376,6 +464,10 @@ class Rule(BaseModel):
     logic: Logic
     limitations: Annotated[list[NonEmptyStr], Field(min_length=1)]
     fixtures: Fixtures
+    fitted: FittedBaseline | None = Field(
+        default=None,
+        description="1.1: baseline logic only. Null until `gauntlet fit-baselines` has run.",
+    )
 
     @model_validator(mode="after")
     def _check_telemetry(self) -> Rule:
@@ -384,12 +476,34 @@ class Rule(BaseModel):
             raise ValueError(f"logic uses event types not listed in telemetry: {missing}")
         return self
 
+    @model_validator(mode="after")
+    def _check_format(self) -> Rule:
+        dumped = self.logic.model_dump(mode="json", by_alias=True)
+        if self.format_version == "1.0" and _uses_format_1_1(dumped):
+            raise ValueError("value paths, first_occurrence and baseline need format_version 1.1")
+        return self
 
-def logic_event_types(logic: MatchLogic | SequenceLogic | ThresholdLogic) -> set[EventType]:
+    @model_validator(mode="after")
+    def _check_fitted(self) -> Rule:
+        if self.fitted is None:
+            return self
+        if not isinstance(self.logic, BaselineLogic):
+            raise ValueError("fitted belongs to baseline logic only")
+        wants_threshold = self.logic.baseline.statistic is BaselineStatistic.CHAIN_LENGTH
+        if wants_threshold != (self.fitted.threshold is not None):
+            raise ValueError("fitted does not fit the baseline statistic")
+        return self
+
+
+def logic_event_types(
+    logic: MatchLogic | SequenceLogic | ThresholdLogic | BaselineLogic,
+) -> set[EventType]:
     if isinstance(logic, MatchLogic):
         return set(logic.match.event_types)
     if isinstance(logic, SequenceLogic):
         return {kind for step in logic.sequence.steps for kind in step.match.event_types}
+    if isinstance(logic, BaselineLogic):
+        return set(logic.baseline.match.event_types)
     return set(logic.threshold.match.event_types)
 
 

@@ -17,7 +17,7 @@ from agent_detection_gauntlet.paths import (
     set_repo_root,
     shown_path,
 )
-from tests.conftest import FIXTURE_LABELS, FIXTURE_TRACES, REPO_ROOT, RULES_DIR
+from tests.conftest import FIXTURE_LABELS, FIXTURE_TRACES, PLUMBING_RULES, REPO_ROOT, RULES_DIR
 from tools.leak_guard import GENERIC_RULES
 
 PATH_RULES = frozenset(
@@ -136,7 +136,7 @@ def test_reports_are_identical_from_root_and_subdirectory(
     monkeypatch.chdir(REPO_ROOT)
     first_out = tmp_path / "first"
     first = scan_and_score(
-        "rules",
+        "tests/data/rules",
         "datasets/fixtures/traces",
         "datasets/fixtures/labels.jsonl",
         first_out,
@@ -145,7 +145,7 @@ def test_reports_are_identical_from_root_and_subdirectory(
     monkeypatch.chdir(REPO_ROOT / "docs")
     second_out = tmp_path / "second"
     second = scan_and_score(
-        "../rules",
+        "../tests/data/rules",
         "../datasets/fixtures/traces",
         "../datasets/fixtures/labels.jsonl",
         second_out,
@@ -156,7 +156,7 @@ def test_reports_are_identical_from_root_and_subdirectory(
     paths = {(item["role"], item["path"], item["external"]) for item in report["inputs"]}
     assert ("detections", "detections.jsonl", True) in paths
     assert ("labels", "datasets/fixtures/labels.jsonl", False) in paths
-    assert ("rule", "rules/ADG-0001.yaml", False) in paths
+    assert ("rule", "tests/data/rules/ADG-0001.yaml", False) in paths
     assert_no_absolute_paths(first[1].decode("utf-8"), tmp_path, REPO_ROOT)
     printed = capsys.readouterr()
     assert "<outside repo>/metrics.json" in printed.out
@@ -165,7 +165,7 @@ def test_reports_are_identical_from_root_and_subdirectory(
 
 
 def copy_inputs(target: Path) -> tuple[str, str, str]:
-    shutil.copytree(RULES_DIR, target / "rules")
+    shutil.copytree(PLUMBING_RULES, target / "rules")
     shutil.copytree(FIXTURE_TRACES, target / "data" / "traces")
     shutil.copy(FIXTURE_LABELS, target / "data" / "labels.jsonl")
     return "rules", "data/traces", "data/labels.jsonl"
@@ -244,7 +244,7 @@ def test_os_error_names_only_a_safe_path(
         [
             "scan",
             "--rules",
-            str(RULES_DIR),
+            str(PLUMBING_RULES),
             "--traces",
             str(FIXTURE_TRACES),
             "--out",

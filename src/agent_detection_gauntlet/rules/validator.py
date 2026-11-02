@@ -1,8 +1,9 @@
 """Rule validation for ``gauntlet validate-rules``.
 
 Checks, in order: each file parses against the rule model, file name matches the rule id,
-ids are unique, every mapping id is in the catalog (warning when unverified), every fixture
-trace exists, and the rule fires on each tp fixture and on no fp fixture.
+ids are unique, baseline rules have been fitted, every mapping id is in the catalog (warning
+when unverified), every fixture trace exists, and the rule fires on each tp fixture and on no
+fp fixture.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from agent_detection_gauntlet.errors import InputError
 from agent_detection_gauntlet.io.traces import load_traces
 from agent_detection_gauntlet.paths import shown_path
 from agent_detection_gauntlet.rules.loader import LoadedRule, load_rule_file, rule_files
+from agent_detection_gauntlet.rules.model import BaselineLogic
 from agent_detection_gauntlet.schema.trace import Trace
 
 
@@ -84,6 +86,18 @@ def load_rule_set(directory: Path, report: ValidationReport) -> None:
             report.error(loaded.path, f"duplicate rule id {loaded.rule.id} (also in {first.name})")
 
 
+def check_fitted(report: ValidationReport) -> None:
+    """A baseline rule that has not been fitted cannot run, so it leaves the rule set."""
+    unfitted = [
+        loaded
+        for loaded in report.rules
+        if isinstance(loaded.rule.logic, BaselineLogic) and loaded.rule.fitted is None
+    ]
+    for loaded in unfitted:
+        report.error(loaded.path, "baseline rule is not fitted; run gauntlet fit-baselines")
+        report.rules.remove(loaded)
+
+
 def check_mappings(report: ValidationReport, catalog: Catalog) -> None:
     for loaded in report.rules:
         for family, ids in loaded.rule.mappings.by_family().items():
@@ -131,6 +145,7 @@ def validate_rules(
 ) -> ValidationReport:
     report = ValidationReport()
     load_rule_set(directory, report)
+    check_fitted(report)
     check_mappings(report, catalog)
     check_fixtures(report, fixture_paths)
     return report

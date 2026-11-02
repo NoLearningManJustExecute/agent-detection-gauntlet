@@ -19,7 +19,9 @@ model, and no number computed from these files is a finding.
 | syn-0007 | heldout | untrusted retrieval reaches upload_file, provenance missing on the model request |
 | syn-0008 | heldout | untrusted retrieval and an unrelated team post |
 | syn-0009 | heldout | user deliberately forwards an untrusted public article |
+| syn-0010 | dev | untrusted read, then a secret read, then a send_email |
 
-The dev traces are the fixtures named by rule ADG-0001. The heldout traces exist so the
+The dev traces are fixtures named by rules. syn-0010 exists because the corpus dev split holds
+no successful trace with that shape; ADG-0007 and ADG-0008 name it, and no result depends on it. The heldout traces exist so the
 metrics stage has every outcome bucket to count: a hit, a miss, a false alarm, true
 negatives and a failed attack.

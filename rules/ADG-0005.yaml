@@ -1,0 +1,56 @@
+id: ADG-0005
+title: Instruction-like text in tool metadata
+version: 0.1.0
+status: experimental
+tier: content
+severity: high
+description: 'Fires when a retrieved tool definition holds text that instructs the agent, rather than
+  describing the tool: mandatory wording, ordering demands, deprecation of another tool, or concealment.'
+hypothesis: A tool description exists to describe parameters. Imperatives aimed at the agent, or claims
+  that another tool is deprecated, are how tool metadata hijacks a session, so the wording should
+  separate poisoned definitions from ordinary ones while it stays in English.
+mappings:
+  atlas:
+  - AML.T0051.001
+  owasp_llm:
+  - LLM01
+  - LLM03
+  owasp_agentic:
+  - ASI04
+  attack: []
+telemetry:
+- retrieval
+logic:
+  match:
+    event_types:
+    - retrieval
+    where:
+      all:
+      - field: attributes.gen_ai.tool.name
+        op: exists
+        value: true
+      - field: attributes.adg.content.text
+        op: regex
+        normalize:
+        - nfkc
+        - casefold
+        - collapse_whitespace
+        value: <important>|important:|you must|must (also )?(call|read|send|include|use) |always use|(before|after)
+          (every|each|any|calling) |do not (tell|inform|mention)|deprecated|replaces [a-z_]+|compliance
+          requirement
+limitations:
+- The phrase list is English, so a translated poisoned description does not match.
+- Honest tools can say 'deprecated' or 'you must supply a path'; those definitions match.
+- It inspects definitions when they are retrieved. A definition that changes after the trace starts
+  is seen only if it is retrieved again.
+fixtures:
+  tp:
+  - arf-00233f2ba64534ac2415000b
+  - arf-0165b1b4516be280a771480a
+  - arf-2c7627ab616af6406928bed7
+  fp:
+  - arf-0003bc96b3a5c6cd552995df
+  - arf-01bf1977b0fca076a986ea7c
+  - arf-0019bfe6f05e6c313357146b
+  - arf-0591f21b742d9ac12eea7599
+  - arf-005b4764abe14b32ad78cc11

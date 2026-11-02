@@ -130,13 +130,13 @@ def test_load_traces_rejects_empty_file(tmp_path: Path) -> None:
 
 def test_fixture_traces_load() -> None:
     trace_set = load_traces([FIXTURE_TRACES])
-    assert len(trace_set.traces) == 9
+    assert len(trace_set.traces) == 10
     assert all(t.trace_id.startswith("syn-") for t in trace_set.traces)
 
 
 def test_load_labels(tmp_path: Path) -> None:
     labels = load_labels([FIXTURE_LABELS])
-    assert len(labels) == 9
+    assert len(labels) == 10
     assert {label.source.value for label in labels.values()} == {"synthetic"}
     duplicate = tmp_path / "dup.jsonl"
     line = FIXTURE_LABELS.read_text(encoding="utf-8").splitlines()[0]

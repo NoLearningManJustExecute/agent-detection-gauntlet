@@ -6,3 +6,28 @@ entries:
     url: https://atlas.mitre.org/techniques/AML.T0051.001
     version: "2026.09"
     verified: false
+  - id: AML.T0051.000
+    name: "LLM Prompt Injection: Direct"
+    url: https://atlas.mitre.org/techniques/AML.T0051.000
+    version: "2026.09"
+    verified: false
+  - id: AML.T0053
+    name: "AI Agent Tool Invocation"
+    url: https://atlas.mitre.org/techniques/AML.T0053
+    version: "2026.09"
+    verified: false
+  - id: AML.T0054
+    name: "LLM Jailbreak"
+    url: https://atlas.mitre.org/techniques/AML.T0054
+    version: "2026.09"
+    verified: false
+  - id: AML.T0057
+    name: "LLM Data Leakage"
+    url: https://atlas.mitre.org/techniques/AML.T0057
+    version: "2026.09"
+    verified: false
+  - id: AML.T0068
+    name: "LLM Prompt Obfuscation"
+    url: https://atlas.mitre.org/techniques/AML.T0068
+    version: "2026.09"
+    verified: false

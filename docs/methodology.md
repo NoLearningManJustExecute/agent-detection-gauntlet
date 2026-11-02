@@ -27,6 +27,15 @@ would not have.
   default and records the split in every report.
 - If held-out results are poor, the rule is not retuned against them and re-scored. Results are
   reported as measured.
+- The command line enforces this. `gauntlet scan` and `gauntlet metrics` refuse held-out inputs
+  unless `GAUNTLET_SCORING_HELDOUT=1` is set, and every such run is appended to
+  [heldout-log.md](heldout-log.md) before anything is read. An input counts as held-out when its
+  path is under `corpus/heldout`, when it is a parent directory that would expand to that folder,
+  when a file's hash is pinned as held-out in the split manifest, or, for `metrics`, when it scores
+  the held-out split of labels that are not synthetic. Rule fixtures and baseline fits refuse
+  held-out data whatever the environment says.
+- Behavior thresholds are fitted by code on dev benign traces only, and the fit command is
+  recorded in the rule. See [engine.md](engine.md#baseline).
 
 ## Outcome buckets
 
