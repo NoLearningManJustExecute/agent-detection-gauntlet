@@ -75,7 +75,9 @@ def _pinned_heldout_hashes(paths: Iterable[Path]) -> frozenset[str]:
 
 def _in_heldout(resolved: Path) -> bool:
     parts = [part.casefold() for part in resolved.parts]
-    return any(parts[i : i + 2] == ["corpus", "heldout"] for i in range(len(parts) - 1))
+    # Evasion inputs and traces derive from held-out attacks, so they are held-out data too.
+    protected = (["corpus", "heldout"], ["datasets", "evasion"])
+    return any(parts[i : i + 2] in protected for i in range(len(parts) - 1))
 
 
 def _is_heldout_path(path: Path, pinned: frozenset[str]) -> bool:

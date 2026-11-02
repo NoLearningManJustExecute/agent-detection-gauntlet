@@ -6,6 +6,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from agent_detection_gauntlet import __version__
 from agent_detection_gauntlet.catalog import load_catalog
@@ -14,13 +15,38 @@ from agent_detection_gauntlet.corpus.card import render as render_card
 from agent_detection_gauntlet.corpus.verify import require_valid
 from agent_detection_gauntlet.engine.executor import scan
 from agent_detection_gauntlet.errors import GauntletError
+from agent_detection_gauntlet.evasion.build import (
+    INPUTS_FILE,
+    build_evasion,
+    verify_evasion,
+)
+from agent_detection_gauntlet.evasion.inputs import SourceCatalogs, build_inputs
+from agent_detection_gauntlet.evasion.model import EvasionResults
+from agent_detection_gauntlet.evasion.plan import (
+    EVASION_INPUTS,
+    EVASION_PLAN,
+    EVASION_REPORT,
+    EVASION_RESULTS,
+    build_plan,
+    dump_plan,
+    read_plan,
+    render_plan,
+)
+from agent_detection_gauntlet.evasion.report import render_results as render_evasion
+from agent_detection_gauntlet.evasion.score import score_evasion
 from agent_detection_gauntlet.firewall import (
     refuse_heldout,
     refuse_output,
     require_clearance,
 )
 from agent_detection_gauntlet.fit import fit_baselines
-from agent_detection_gauntlet.io.jsonl import pretty_json, read_jsonl, write_jsonl, write_text
+from agent_detection_gauntlet.io.jsonl import (
+    pretty_json,
+    read_jsonl,
+    strict_json_loads,
+    write_jsonl,
+    write_text,
+)
 from agent_detection_gauntlet.io.labels import load_labels
 from agent_detection_gauntlet.io.traces import load_traces
 from agent_detection_gauntlet.metrics.compute import (
@@ -314,6 +340,148 @@ def cmd_corpus_card(args: argparse.Namespace) -> int:
     return 0
 
 
+def _catalog_items(path: Path) -> dict[str, dict[str, Any]]:
+    data = strict_json_loads(path.read_text(encoding="utf-8"))
+    return {item["scenario_id"]: item for item in data["scenarios"]}
+
+
+def _read_evasion_results(path: Path) -> EvasionResults:
+    if not path.is_file():
+        raise GauntletError(f"no results at {shown_path(path)}")
+    return EvasionResults.model_validate_json(path.read_bytes().decode("utf-8"))
+
+
+def _evasion_text(args: argparse.Namespace) -> str:
+    """The results as a fresh score gives them. Refuses rules that left the registration."""
+    plan = read_plan(args.plan)
+    baseline_plan = read_preregistration(args.prereg)
+    report = _require_valid_rules(args.rules, args.fixtures)
+    drift = rule_hash_drift(baseline_plan, report.rules)
+    if drift:
+        raise GauntletError("rules differ from the pre-registration: " + "; ".join(drift))
+    if sha256_file(args.baseline_results) != plan.baseline_results_sha256:
+        raise GauntletError("the baseline results differ from the registered ones")
+    paths = [traces_dir(args.corpus, Split.HELDOUT, k) for k in plan.content_ref_ks]
+    paths += [args.evasion / f"k{k}" for k in plan.content_ref_ks]
+    command = "evasion score --check" if args.check else "evasion score"
+    require_clearance(command, paths)
+    results = score_evasion(
+        plan,
+        sha256_file(args.plan),
+        read_results(args.baseline_results),
+        plan.baseline_results_sha256,
+        report.rules,
+        args.corpus,
+        args.evasion,
+    )
+    return pretty_json(results.model_dump(mode="json"))
+
+
+def cmd_evasion_prereg(args: argparse.Namespace) -> int:
+    refuse_output(args.out)
+    refuse_output(args.doc)
+    if args.out.exists():
+        raise GauntletError(f"{shown_path(args.out)} already exists; a registration is frozen")
+    commit, dirty = git_provenance()
+    if commit is None or dirty is not False:
+        raise GauntletError("register from a clean git checkout, so the tooling commit is exact")
+    baseline = read_preregistration(args.prereg)
+    report = _require_valid_rules(args.rules, args.fixtures)
+    drift = rule_hash_drift(baseline, report.rules)
+    if drift:
+        raise GauntletError("rules differ from the pre-registration: " + "; ".join(drift))
+    plan = build_plan(baseline, args.corpus, args.attack_variants, commit, args.source_commit)
+    write_text(args.out, dump_plan(plan))
+    existing = args.doc.read_bytes().decode("utf-8")
+    write_text(args.doc, existing + render_plan(plan))
+    print(f"ok: registered {len(plan.bases)} base(s) -> {shown_path(args.out)}")
+    return 0
+
+
+def cmd_evasion_mutate(args: argparse.Namespace) -> int:
+    plan = read_plan(args.plan)
+    # Reads held-out attack text from the source lab's catalogs, after the rules were frozen.
+    require_clearance("evasion mutate", [], scoring_split=True, anchors=[args.plan])
+    catalogs = SourceCatalogs(
+        corpus={**_catalog_items(args.catalog), **_catalog_items(args.seeded)},
+        attack_variants=_catalog_items(args.attack_variants),
+    )
+    doc = build_inputs(plan.bases, catalogs, plan.source_commit)
+    out = args.evasion / INPUTS_FILE
+    write_text(out, pretty_json(doc))
+    print(f"ok: {len(doc['scenarios'])} mutated scenario(s) -> {shown_path(out)}")
+    return 0
+
+
+def cmd_evasion_build(args: argparse.Namespace) -> int:
+    raw, unique = build_evasion(args.source, args.evasion, read_plan(args.plan))
+    print(f"ok: {raw} raw runs, {unique} unique traces -> {shown_path(args.evasion)}")
+    return 0
+
+
+def cmd_evasion_verify(args: argparse.Namespace) -> int:
+    report = _require_valid_rules(args.rules, args.fixtures)
+    plan = read_plan(args.plan)
+    problems: list[str] = []
+    if args.frozen_plan and args.plan.read_bytes() != args.frozen_plan.read_bytes():
+        problems.append(f"{shown_path(args.plan)} changed after it was first committed")
+    doc = args.doc.read_bytes().decode("utf-8") if args.doc.is_file() else ""
+    if render_plan(plan) not in doc:
+        problems.append(f"{shown_path(args.doc)} does not hold the rendered evasion registration")
+    if args.frozen_doc and args.frozen_doc.read_bytes() not in args.doc.read_bytes():
+        problems.append(f"{shown_path(args.doc)} changed text of the evasion registration")
+    current = {item.rule.id: (item.rule.version, sha256_file(item.path)) for item in report.rules}
+    if current != {rule.id: (rule.version, rule.sha256) for rule in plan.rules}:
+        problems.append("rules differ from the evasion registration")
+    if args.evasion.is_dir():
+        problems += verify_evasion(plan, args.corpus, args.evasion)
+    if args.results.is_file():
+        results = _read_evasion_results(args.results)
+        if results.preregistration_sha256 != sha256_file(args.plan):
+            problems.append(f"{shown_path(args.results)} names a different registration")
+        scored = {rule.id: (rule.version, rule.sha256) for rule in results.rules}
+        if scored != {rule.id: (rule.version, rule.sha256) for rule in plan.rules}:
+            problems.append(f"{shown_path(args.results)} does not reference the registered rules")
+    for problem in problems:
+        print(f"error: {problem}", file=sys.stderr)
+    if problems:
+        return 1
+    print("ok: evasion registration frozen, inputs disjoint, rules and results agree")
+    return 0
+
+
+def cmd_evasion_score(args: argparse.Namespace) -> int:
+    if not args.check and args.out is None:
+        raise GauntletError("score needs --out or --check")
+    if args.out is not None:
+        refuse_output(args.out)
+    text = _evasion_text(args)
+    if args.check:
+        if args.results.read_bytes() != text.encode("utf-8"):
+            print(f"error: {shown_path(args.results)} differs from a fresh score", file=sys.stderr)
+            return 1
+        print("ok: a fresh score is byte-identical to the golden file")
+        return 0
+    write_text(args.out, text)
+    print(f"ok: evasion scored -> {shown_path(args.out)}")
+    return 0
+
+
+def cmd_evasion_report(args: argparse.Namespace) -> int:
+    refuse_output(args.out)
+    text = render_evasion(_read_evasion_results(args.results), read_plan(args.plan))
+    if args.check:
+        current = args.out.read_bytes().decode("utf-8") if args.out.is_file() else None
+        if current != text:
+            print(f"{shown_path(args.out)} is out of date; run `gauntlet evasion report`")
+            return 1
+        print("ok: evasion report matches the JSON")
+        return 0
+    write_text(args.out, text)
+    print(f"ok: wrote {shown_path(args.out)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gauntlet",
@@ -413,6 +581,60 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--frozen-doc", type=Path, default=None, help="its text as first committed")
     v.add_argument("--base-results", type=Path, default=None, help="golden file on the base")
     v.set_defaults(handler=cmd_validation_verify)
+
+    evasion = sub.add_parser("evasion", help="register, generate, score and report Phase 4")
+    esub = evasion.add_subparsers(dest="evasion_command", required=True, metavar="action")
+    e = esub.add_parser("prereg", help="freeze the bases and the method, once")
+    e.add_argument("--source-commit", required=True, help="source lab commit that runs the inputs")
+    e.add_argument("--attack-variants", type=Path, required=True, help="source lab -Vnn file")
+    e.add_argument("--rules", type=Path, default=DEFAULT_RULES)
+    e.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
+    e.add_argument("--prereg", type=Path, default=PREREG_JSON)
+    e.add_argument("--out", type=Path, default=EVASION_PLAN)
+    e.add_argument("--doc", type=Path, default=PREREG_DOC)
+    e.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
+    e.set_defaults(handler=cmd_evasion_prereg)
+    e = esub.add_parser("mutate", help="generate the mutated scenario file the source lab runs")
+    e.add_argument("--catalog", type=Path, required=True, help="source lab scenario file")
+    e.add_argument("--seeded", type=Path, required=True, help="source lab seeded scenario file")
+    e.add_argument("--attack-variants", type=Path, required=True, help="source lab -Vnn file")
+    e.add_argument("--plan", type=Path, default=EVASION_PLAN)
+    e.add_argument("--evasion", type=Path, default=EVASION_INPUTS)
+    e.set_defaults(handler=cmd_evasion_mutate)
+    e = esub.add_parser("build", help="dedupe the export of the evasion runs and pin it")
+    e.add_argument("--source", type=Path, required=True, help="export dir")
+    e.add_argument("--plan", type=Path, default=EVASION_PLAN)
+    e.add_argument("--evasion", type=Path, default=EVASION_INPUTS)
+    e.set_defaults(handler=cmd_evasion_build)
+    e = esub.add_parser("verify", help="check registration, inputs, disjointness and results")
+    e.add_argument("--rules", type=Path, default=DEFAULT_RULES)
+    e.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
+    e.add_argument("--plan", type=Path, default=EVASION_PLAN)
+    e.add_argument("--doc", type=Path, default=PREREG_DOC)
+    e.add_argument("--evasion", type=Path, default=EVASION_INPUTS)
+    e.add_argument("--results", type=Path, default=EVASION_RESULTS)
+    e.add_argument("--frozen-plan", type=Path, default=None, help="registration as first committed")
+    e.add_argument("--frozen-doc", type=Path, default=None, help="its text as first committed")
+    e.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
+    e.set_defaults(handler=cmd_evasion_verify)
+    e = esub.add_parser("score", help="score the evasion traces as registered")
+    e.add_argument("--rules", type=Path, default=DEFAULT_RULES)
+    e.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
+    e.add_argument("--plan", type=Path, default=EVASION_PLAN)
+    e.add_argument("--prereg", type=Path, default=PREREG_JSON)
+    e.add_argument("--baseline-results", type=Path, default=BASELINE_RESULTS)
+    e.add_argument("--evasion", type=Path, default=EVASION_INPUTS)
+    e.add_argument("--out", type=Path, default=None, help="results file to write")
+    e.add_argument("--results", type=Path, default=EVASION_RESULTS, help="golden file for --check")
+    e.add_argument("--check", action="store_true", help="fail if a fresh score differs from it")
+    e.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
+    e.set_defaults(handler=cmd_evasion_score)
+    e = esub.add_parser("report", help="render the results report from the JSON")
+    e.add_argument("--plan", type=Path, default=EVASION_PLAN)
+    e.add_argument("--results", type=Path, default=EVASION_RESULTS)
+    e.add_argument("--out", type=Path, default=EVASION_REPORT)
+    e.add_argument("--check", action="store_true", help="fail if the report is out of date")
+    e.set_defaults(handler=cmd_evasion_report)
 
     corpus = sub.add_parser("corpus", help="build, verify or describe the frozen corpus")
     csub = corpus.add_subparsers(dest="corpus_command", required=True, metavar="action")

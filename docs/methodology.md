@@ -40,6 +40,8 @@ would not have.
   fits refuse held-out data whatever the environment says. Commands that take `--out` may not write
   into the held-out folder or over the log; `gauntlet corpus build` is the one exception, since it
   creates the split, and CI's freeze check covers it.
+- Evasion inputs and traces (`datasets/evasion`) derive from held-out attacks, so the same checks
+  treat them as held-out data. `gauntlet evasion score` and `gauntlet evasion mutate` log their reads.
 - What the firewall protects is held-out attack content reaching detection work. Blocked: showing
   held-out attack content to rule authoring or human review, and scoring the held-out split before
   rules are frozen and pre-registered.
