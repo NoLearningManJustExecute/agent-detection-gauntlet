@@ -6,6 +6,13 @@ docs/heldout-log.md before any trace is read. Rule fixtures and baseline fits ne
 
 An input is checked by what it would actually read: a directory is expanded the way the trace
 loader expands it, so the answer does not depend on the working directory or on --root.
+
+What the firewall protects is held-out attack content reaching detection work: rule authoring,
+human review, and scoring before rules are frozen and pre-registered. Opaque byte-level access by
+privacy and integrity tooling is allowed and is not a breach. The leak guard, schema validation,
+manifest and label parsing, and lint may read held-out bytes, because they pattern-match or parse
+without surfacing attack content to whoever writes the rules. Privacy scanning is mandatory and
+covers every file. Folder names alone carry no attack content.
 """
 
 from __future__ import annotations
