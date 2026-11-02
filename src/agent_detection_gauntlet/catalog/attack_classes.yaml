@@ -1,0 +1,84 @@
+# Which techniques each attack class exercises, as the source lab's threat model files them
+# (agent-risk-framework docs/threat_model.md, at the commit below, the file's last edit). Its
+# framework IDs per threat date from that repository's commit fb6fdf6, before any rule here existed.
+# It ties techniques to classes for per-technique counts and the "no successful attacks" reason.
+# It cannot make a technique covered: that comes from the rules' pooled results only.
+#
+# IDs are in this repository's catalog vocabulary. The source lab numbers OWASP LLM differently
+# (its LLM03 is Excessive Agency and its LLM04 is Supply Chain; the catalog here has LLM06 and
+# LLM03), so those two are matched by title. Phase 7 verifies every ID against the primary source.
+# not_in_catalog holds source IDs, as written there, that no rule here may reference.
+source_commit: c67352a45ac23a1b833242459a15f0723ed933fc
+classes:
+  AC01:
+    atlas: [AML.T0053]
+    owasp_llm: [LLM06]
+    owasp_agentic: [ASI02]
+    attack: []
+    not_in_catalog: []
+  AC02:
+    atlas: [AML.T0053]
+    owasp_llm: [LLM06]
+    owasp_agentic: [ASI02, ASI03]
+    attack: []
+    not_in_catalog: [AML.T0085.001]
+  AC03:
+    atlas: [AML.T0053]
+    owasp_llm: [LLM06]
+    owasp_agentic: [ASI02]
+    attack: []
+    not_in_catalog: []
+  AC04:
+    atlas: []
+    owasp_llm: []
+    owasp_agentic: [ASI01]
+    attack: []
+    not_in_catalog: [AML.T0056, "LLM08:2026"]
+  AC05:
+    atlas: [AML.T0051.000, AML.T0054]
+    owasp_llm: [LLM01]
+    owasp_agentic: [ASI01]
+    attack: []
+    not_in_catalog: []
+  AC06:
+    atlas: [AML.T0053]
+    owasp_llm: [LLM06]
+    owasp_agentic: [ASI02]
+    attack: []
+    not_in_catalog: []
+  AC07:
+    atlas: [AML.T0053]
+    owasp_llm: [LLM06]
+    owasp_agentic: []
+    attack: []
+    not_in_catalog: [ASI09]
+  AC09:
+    atlas: [AML.T0051.001]
+    owasp_llm: [LLM01]
+    owasp_agentic: [ASI01]
+    attack: []
+    not_in_catalog: []
+  AC10:
+    atlas: []
+    owasp_llm: [LLM02]
+    owasp_agentic: [ASI03]
+    attack: []
+    not_in_catalog: [AML.T0086]
+  AC11:
+    atlas: []
+    owasp_llm: [LLM03]
+    owasp_agentic: [ASI04]
+    attack: []
+    not_in_catalog: [AML.T0011.002, AML.T0115.002]
+  AC12A:
+    atlas: []
+    owasp_llm: [LLM03]
+    owasp_agentic: [ASI04]
+    attack: []
+    not_in_catalog: [AML.T0110, AML.T0115.002]
+  AC12B:
+    atlas: []
+    owasp_llm: [LLM03]
+    owasp_agentic: [ASI04]
+    attack: []
+    not_in_catalog: [AML.T0110, AML.T0115.002]

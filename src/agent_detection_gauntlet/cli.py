@@ -3,16 +3,36 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 from collections.abc import Sequence
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from agent_detection_gauntlet import __version__
-from agent_detection_gauntlet.catalog import load_catalog
+from agent_detection_gauntlet.catalog import FAMILIES, load_catalog
 from agent_detection_gauntlet.corpus.build import build as build_corpus
 from agent_detection_gauntlet.corpus.card import render as render_card
 from agent_detection_gauntlet.corpus.verify import require_valid
+from agent_detection_gauntlet.coverage.claims import (
+    docs_to_scan,
+    render_claim,
+    unsupported_claims,
+)
+from agent_detection_gauntlet.coverage.compute import (
+    CATALOG_DIR,
+    CLASS_MAP_FILE,
+    COVERAGE_DOC,
+    COVERAGE_JSON,
+    build_coverage,
+    load_class_map,
+)
+from agent_detection_gauntlet.coverage.compute import Inputs as CoverageInputs
+from agent_detection_gauntlet.coverage.model import CoverageReport, InputRef
+from agent_detection_gauntlet.coverage.report import render_coverage
 from agent_detection_gauntlet.engine.executor import scan
 from agent_detection_gauntlet.errors import GauntletError
 from agent_detection_gauntlet.evasion.build import (
@@ -41,6 +61,7 @@ from agent_detection_gauntlet.firewall import (
 )
 from agent_detection_gauntlet.fit import fit_baselines
 from agent_detection_gauntlet.io.jsonl import (
+    format_validation_error,
     pretty_json,
     read_jsonl,
     strict_json_loads,
@@ -57,7 +78,7 @@ from agent_detection_gauntlet.metrics.compute import (
     sha256_file,
 )
 from agent_detection_gauntlet.metrics.report import InputRole
-from agent_detection_gauntlet.paths import set_repo_root, shown_path
+from agent_detection_gauntlet.paths import repo_relative, set_repo_root, shown_path
 from agent_detection_gauntlet.rules.docgen import render as render_rules_doc
 from agent_detection_gauntlet.rules.validator import ValidationReport, validate_rules
 from agent_detection_gauntlet.schema.detection import Detection
@@ -487,6 +508,76 @@ def cmd_evasion_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _coverage_inputs(args: argparse.Namespace) -> CoverageInputs:
+    report = _require_valid_rules(args.rules, args.fixtures)
+    catalog = load_catalog()
+    input_refs: list[InputRef] = []
+    for path in (args.prereg, args.baseline_results, args.evasion_results):
+        relative = repo_relative(path)
+        if relative is None:
+            raise GauntletError(f"{shown_path(path)} is outside the repository")
+        input_refs.append(InputRef(path=relative, sha256=sha256_file(path)))
+    package = resources.files("agent_detection_gauntlet.catalog")
+    for name in (*(f"{family}.yaml" for family in FAMILIES), CLASS_MAP_FILE):
+        digest = hashlib.sha256(package.joinpath(name).read_bytes()).hexdigest()
+        input_refs.append(InputRef(path=f"{CATALOG_DIR}/{name}", sha256=digest))
+    return CoverageInputs(
+        plan=read_preregistration(args.prereg),
+        plan_sha256=sha256_file(args.prereg),
+        baseline=read_results(args.baseline_results),
+        baseline_sha256=sha256_file(args.baseline_results),
+        evasion=_read_evasion_results(args.evasion_results),
+        rules=report.rules,
+        catalog=catalog,
+        class_map=load_class_map(catalog),
+        input_refs=input_refs,
+    )
+
+
+def cmd_coverage_build(args: argparse.Namespace) -> int:
+    refuse_output(args.out)
+    refuse_output(args.doc)
+    report = build_coverage(_coverage_inputs(args))
+    outputs = (
+        (args.out, pretty_json(report.model_dump(mode="json"))),
+        (args.doc, render_coverage(report)),
+    )
+    if args.check:
+        stale = [
+            path
+            for path, text in outputs
+            if not path.is_file() or path.read_bytes() != text.encode("utf-8")
+        ]
+        for path in stale:
+            print(f"error: {shown_path(path)} is out of date", file=sys.stderr)
+        if stale:
+            print("run `gauntlet coverage build` and commit the result", file=sys.stderr)
+            return 1
+        print("ok: coverage JSON and doc match the rules and the golden results")
+        return 0
+    for path, text in outputs:
+        write_text(path, text)
+    print(f"ok: {len(report.techniques)} technique(s) -> {shown_path(args.out)}")
+    return 0
+
+
+def cmd_coverage_claims(args: argparse.Namespace) -> int:
+    if not args.results.is_file():
+        raise GauntletError(f"no coverage results at {shown_path(args.results)}")
+    try:
+        report = CoverageReport.model_validate_json(args.results.read_bytes().decode("utf-8"))
+    except ValidationError as exc:
+        raise GauntletError(f"{shown_path(args.results)}: {format_validation_error(exc)}") from exc
+    paths = docs_to_scan(args.root_dir, args.doc)
+    problems = unsupported_claims(paths, report)
+    for problem in problems:
+        print(f"error: {render_claim(problem)}", file=sys.stderr)
+    if problems:
+        return 1
+    print(f"ok: {len(paths)} doc(s) scanned, no coverage claim the JSON does not support")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gauntlet",
@@ -641,6 +732,26 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--out", type=Path, default=EVASION_REPORT)
     e.add_argument("--check", action="store_true", help="fail if the report is out of date")
     e.set_defaults(handler=cmd_evasion_report)
+
+    coverage = sub.add_parser("coverage", help="compute coverage and check claims about it")
+    gsub = coverage.add_subparsers(dest="coverage_command", required=True, metavar="action")
+    g = gsub.add_parser("build", help="compute the JSON and the doc from rules and golden results")
+    g.add_argument("--rules", type=Path, default=DEFAULT_RULES)
+    g.add_argument("--prereg", type=Path, default=PREREG_JSON)
+    g.add_argument("--baseline-results", type=Path, default=BASELINE_RESULTS)
+    g.add_argument("--evasion-results", type=Path, default=EVASION_RESULTS)
+    g.add_argument("--out", type=Path, default=COVERAGE_JSON)
+    g.add_argument("--doc", type=Path, default=COVERAGE_DOC)
+    g.add_argument("--check", action="store_true", help="fail if either output is out of date")
+    g.add_argument("--fixtures", nargs="+", type=Path, default=DEFAULT_FIXTURES, help=fixtures_help)
+    g.set_defaults(handler=cmd_coverage_build)
+    g = gsub.add_parser("claims", help="fail on prose claiming coverage the JSON does not support")
+    g.add_argument("--results", type=Path, default=COVERAGE_JSON)
+    g.add_argument("--doc", type=Path, default=COVERAGE_DOC, help="the generated doc, not scanned")
+    g.add_argument(
+        "--root-dir", type=Path, default=Path(), help="directory holding README and docs"
+    )
+    g.set_defaults(handler=cmd_coverage_claims)
 
     corpus = sub.add_parser("corpus", help="build, verify or describe the frozen corpus")
     csub = corpus.add_subparsers(dest="corpus_command", required=True, metavar="action")
