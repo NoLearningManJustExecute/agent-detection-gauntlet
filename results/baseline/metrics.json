@@ -8350,6 +8350,7 @@
   "set_asides": [
     {
       "name": "seeded_group_parent_in_other_split",
+      "registered": true,
       "remaining_groups": 7,
       "set_aside_groups": 13,
       "set_aside_traces": 16,
@@ -8686,9 +8687,10 @@
     },
     {
       "name": "family_member_in_other_split",
-      "remaining_groups": 0,
-      "set_aside_groups": 20,
-      "set_aside_traces": 28,
+      "registered": true,
+      "remaining_groups": 4,
+      "set_aside_groups": 16,
+      "set_aside_traces": 19,
       "table": {
         "all_tiers": {
           "attack_failed": {
@@ -8697,10 +8699,15 @@
           },
           "name": "all_tiers",
           "recall": {
-            "ci95": null,
-            "denominator": 0,
-            "numerator": 0,
-            "value": null
+            "ci95": {
+              "confidence": 0.95,
+              "lower": 0.565,
+              "method": "wilson",
+              "upper": 0.980109
+            },
+            "denominator": 9,
+            "numerator": 8,
+            "value": 0.888889
           }
         },
         "per_rule": [
@@ -8711,10 +8718,15 @@
             },
             "name": "ADG-0001",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.0,
+                "method": "wilson",
+                "upper": 0.299145
+              },
+              "denominator": 9,
               "numerator": 0,
-              "value": null
+              "value": 0.0
             }
           },
           {
@@ -8724,10 +8736,15 @@
             },
             "name": "ADG-0002",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
-              "numerator": 0,
-              "value": null
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.063225,
+                "method": "wilson",
+                "upper": 0.547411
+              },
+              "denominator": 9,
+              "numerator": 2,
+              "value": 0.222222
             }
           },
           {
@@ -8737,10 +8754,15 @@
             },
             "name": "ADG-0003",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
-              "numerator": 0,
-              "value": null
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.063225,
+                "method": "wilson",
+                "upper": 0.547411
+              },
+              "denominator": 9,
+              "numerator": 2,
+              "value": 0.222222
             }
           },
           {
@@ -8750,10 +8772,15 @@
             },
             "name": "ADG-0004",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.0,
+                "method": "wilson",
+                "upper": 0.299145
+              },
+              "denominator": 9,
               "numerator": 0,
-              "value": null
+              "value": 0.0
             }
           },
           {
@@ -8763,10 +8790,15 @@
             },
             "name": "ADG-0005",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
-              "numerator": 0,
-              "value": null
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.063225,
+                "method": "wilson",
+                "upper": 0.547411
+              },
+              "denominator": 9,
+              "numerator": 2,
+              "value": 0.222222
             }
           },
           {
@@ -8776,10 +8808,15 @@
             },
             "name": "ADG-0006",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
-              "numerator": 0,
-              "value": null
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.120584,
+                "method": "wilson",
+                "upper": 0.645798
+              },
+              "denominator": 9,
+              "numerator": 3,
+              "value": 0.333333
             }
           },
           {
@@ -8789,10 +8826,15 @@
             },
             "name": "ADG-0007",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.0,
+                "method": "wilson",
+                "upper": 0.299145
+              },
+              "denominator": 9,
               "numerator": 0,
-              "value": null
+              "value": 0.0
             }
           },
           {
@@ -8802,10 +8844,15 @@
             },
             "name": "ADG-0008",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.0,
+                "method": "wilson",
+                "upper": 0.299145
+              },
+              "denominator": 9,
               "numerator": 0,
-              "value": null
+              "value": 0.0
             }
           },
           {
@@ -8815,10 +8862,15 @@
             },
             "name": "ADG-0009",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.0,
+                "method": "wilson",
+                "upper": 0.299145
+              },
+              "denominator": 9,
               "numerator": 0,
-              "value": null
+              "value": 0.0
             }
           },
           {
@@ -8828,10 +8880,15 @@
             },
             "name": "ADG-0010",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
-              "numerator": 0,
-              "value": null
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.063225,
+                "method": "wilson",
+                "upper": 0.547411
+              },
+              "denominator": 9,
+              "numerator": 2,
+              "value": 0.222222
             }
           },
           {
@@ -8841,10 +8898,15 @@
             },
             "name": "ADG-0011",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.0,
+                "method": "wilson",
+                "upper": 0.299145
+              },
+              "denominator": 9,
               "numerator": 0,
-              "value": null
+              "value": 0.0
             }
           },
           {
@@ -8854,10 +8916,15 @@
             },
             "name": "ADG-0012",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.0,
+                "method": "wilson",
+                "upper": 0.299145
+              },
+              "denominator": 9,
               "numerator": 0,
-              "value": null
+              "value": 0.0
             }
           },
           {
@@ -8867,10 +8934,15 @@
             },
             "name": "ADG-0013",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
-              "numerator": 0,
-              "value": null
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.019891,
+                "method": "wilson",
+                "upper": 0.435
+              },
+              "denominator": 9,
+              "numerator": 1,
+              "value": 0.111111
             }
           },
           {
@@ -8880,10 +8952,15 @@
             },
             "name": "ADG-0014",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
-              "numerator": 0,
-              "value": null
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.063225,
+                "method": "wilson",
+                "upper": 0.547411
+              },
+              "denominator": 9,
+              "numerator": 2,
+              "value": 0.222222
             }
           }
         ],
@@ -8895,10 +8972,15 @@
             },
             "name": "content",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
-              "numerator": 0,
-              "value": null
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.266651,
+                "method": "wilson",
+                "upper": 0.811221
+              },
+              "denominator": 9,
+              "numerator": 5,
+              "value": 0.555556
             }
           },
           {
@@ -8908,10 +8990,15 @@
             },
             "name": "sequence",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
-              "numerator": 0,
-              "value": null
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.063225,
+                "method": "wilson",
+                "upper": 0.547411
+              },
+              "denominator": 9,
+              "numerator": 2,
+              "value": 0.222222
             }
           },
           {
@@ -8921,10 +9008,15 @@
             },
             "name": "behavior",
             "recall": {
-              "ci95": null,
-              "denominator": 0,
-              "numerator": 0,
-              "value": null
+              "ci95": {
+                "confidence": 0.95,
+                "lower": 0.120584,
+                "method": "wilson",
+                "upper": 0.645798
+              },
+              "denominator": 9,
+              "numerator": 3,
+              "value": 0.333333
             }
           }
         ]
@@ -8932,6 +9024,7 @@
     },
     {
       "name": "authored_obfuscated_twin",
+      "registered": true,
       "remaining_groups": 19,
       "set_aside_groups": 3,
       "set_aside_traces": 3,
@@ -9261,6 +9354,253 @@
               "denominator": 25,
               "numerator": 10,
               "value": 0.4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "any_relative_in_other_split",
+      "registered": false,
+      "remaining_groups": 0,
+      "set_aside_groups": 20,
+      "set_aside_traces": 28,
+      "table": {
+        "all_tiers": {
+          "attack_failed": {
+            "count": 0,
+            "detected": 0
+          },
+          "name": "all_tiers",
+          "recall": {
+            "ci95": null,
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "per_rule": [
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0001",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0002",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0003",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0004",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0005",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0006",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0007",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0008",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0009",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0010",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0011",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0012",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0013",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "ADG-0014",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          }
+        ],
+        "per_tier": [
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "content",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "sequence",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          {
+            "attack_failed": {
+              "count": 0,
+              "detected": 0
+            },
+            "name": "behavior",
+            "recall": {
+              "ci95": null,
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
             }
           }
         ]
