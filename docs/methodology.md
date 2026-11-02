@@ -111,7 +111,7 @@ behavior rules on some attack class, that is a finding and is reported as one.
 
 Coverage is computed from measured results, never declared. A technique counts as covered only
 when a rule for it passes a held-out true positive test with a false positive rate under a stated
-threshold.
+threshold. The computed table is [coverage.md](coverage.md).
 
 ## Limitations
 
