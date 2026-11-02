@@ -81,6 +81,9 @@ from agent_detection_gauntlet.metrics.compute import (
 )
 from agent_detection_gauntlet.metrics.report import InputRole
 from agent_detection_gauntlet.paths import repo_relative, set_repo_root, shown_path
+from agent_detection_gauntlet.publish.build import is_current
+from agent_detection_gauntlet.publish.build import outputs as publish_outputs
+from agent_detection_gauntlet.publish.numbers import check_published
 from agent_detection_gauntlet.rules.docgen import render as render_rules_doc
 from agent_detection_gauntlet.rules.lint import lint_rules
 from agent_detection_gauntlet.rules.validator import ValidationReport, validate_rules
@@ -581,6 +584,33 @@ def cmd_coverage_claims(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_publish_build(args: argparse.Namespace) -> int:
+    outputs = publish_outputs(args.root_dir)
+    if args.check:
+        stale = [path for path, text in outputs if not is_current(path, text)]
+        for path in stale:
+            print(f"error: {shown_path(path)} is out of date", file=sys.stderr)
+        if stale:
+            print("run `gauntlet publish build` and commit the result", file=sys.stderr)
+            return 1
+        print("ok: dashboard, mapping table and diagram match their sources")
+        return 0
+    for path, text in outputs:
+        write_text(path, text)
+        print(f"ok: wrote {shown_path(path)}")
+    return 0
+
+
+def cmd_publish_numbers(args: argparse.Namespace) -> int:
+    scanned, problems = check_published(args.root_dir)
+    for problem in problems:
+        print(f"error: {problem.render()}", file=sys.stderr)
+    if problems:
+        return 1
+    print(f"ok: {len(scanned)} file(s) scanned, every published rate is in a results JSON")
+    return 0
+
+
 def cmd_lint_rules(args: argparse.Namespace) -> int:
     report = _require_valid_rules(args.directory, args.fixtures)
     issues = lint_rules(report.rules)
@@ -791,6 +821,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--root-dir", type=Path, default=Path(), help="directory holding README and docs"
     )
     g.set_defaults(handler=cmd_coverage_claims)
+
+    publish = sub.add_parser("publish", help="build and check the public documents")
+    usub = publish.add_subparsers(dest="publish_command", required=True, metavar="action")
+    u = usub.add_parser("build", help="render the dashboard, mapping table and diagram")
+    u.add_argument("--root-dir", type=Path, default=Path(), help="repository root")
+    u.add_argument("--check", action="store_true", help="fail if any output is out of date")
+    u.set_defaults(handler=cmd_publish_build)
+    u = usub.add_parser("numbers", help="fail on a published rate no results JSON holds")
+    u.add_argument("--root-dir", type=Path, default=Path(), help="repository root")
+    u.set_defaults(handler=cmd_publish_numbers)
 
     corpus = sub.add_parser("corpus", help="build, verify or describe the frozen corpus")
     csub = corpus.add_subparsers(dest="corpus_command", required=True, metavar="action")

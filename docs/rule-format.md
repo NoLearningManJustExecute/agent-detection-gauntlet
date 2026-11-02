@@ -248,8 +248,8 @@ During validation:
 - A mapping ID in the catalog with `verified: false` is a **warning**. Warnings do not fail
   validation.
 
-All current catalog entries are unverified. Verification against the primary sources is
-scheduled for Phase 7, so every rule currently produces one warning per mapping ID.
+Verification against the primary sources is
+recorded in [mappings.md](mappings.md), and a rule warns once per mapping to an unverified ID.
 
 `gauntlet rules-doc` renders [detections.md](detections.md) from the rule files, and CI fails when
 the two disagree.

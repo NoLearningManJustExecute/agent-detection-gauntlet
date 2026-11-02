@@ -30,6 +30,8 @@ class CatalogEntry(BaseModel):
     url: Annotated[str, StringConstraints(pattern=r"^https://\S+$")]
     version: NonEmptyStr
     verified: StrictBool = False
+    checked: NonEmptyStr | None = None
+    note: NonEmptyStr | None = None
 
 
 class CatalogFile(BaseModel):

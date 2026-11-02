@@ -1,47 +1,67 @@
 # agent-detection-gauntlet
 
-A research platform that measures which AI-agent detection techniques stay effective when
-attackers deliberately evade them. Agent traces are recorded in a fixed schema, detection rules
-are run over them by a deterministic engine, and every result is scored against ground truth
-that the engine never sees. The goal is a measured answer, with denominators and confidence
-intervals, rather than a list of claimed coverage.
-
-Core question:
+Measures which AI-agent detection techniques stay effective when attackers deliberately evade them.
 
 > Which AI-agent detection techniques remain effective when attackers intentionally evade them?
 
-## Pipeline
+**Character tricks blind keyword detection. Sequence and behavior detection hold, at the recall they
+started with.**
 
-1. **Attack**: run known attack classes against instrumented agents, alongside benign work.
-2. **Telemetry**: record every run as a trace of schema-checked JSONL events.
-3. **Detection**: evaluate content, sequence and behavior rules over the traces.
-4. **Evasion**: mutate payloads and vary attack structure, then capture new traces.
-5. **Validation**: score detections against held-out ground truth with intervals.
-6. **Findings**: report what held up, what did not, and the limits of the measurement.
+| Tier | Recall under payload mutation | Same attacks, unmutated | Change [95% interval] |
+|---|---|---|---|
+| content | 7/57 = 0.123 | 25/48 = 0.521 | -0.398 [-0.604, -0.170] |
+| sequence | 8/57 = 0.140 | 7/48 = 0.146 | -0.005 [-0.060, +0.047] |
+| behavior | 21/57 = 0.368 | 20/48 = 0.417 | -0.048 [-0.092, +0.012] |
+| all tiers | 28/57 = 0.491 | 39/48 = 0.812 | -0.321 [-0.531, -0.065] |
 
-## Status
+- **Homoglyphs and zero-width characters** take content recall to 0/21 and 1/23.
+- **Base64 is not an evasion here.** It broke the attack: 0/66 runs succeeded, because the model could
+  not act on it.
+- **Together, on clean attacks,** all tiers catch 20/28 = 0.714 [0.529, 0.847] of successful attacks at
+  a false positive rate of 1/38 = 0.026 [0.005, 0.135].
+- **Individual rules are weak.** No single rule clears the registered bar of 0.5 recall; the best is
+  7/28 = 0.250. The strength is in the combination, and the combination still drops under mutation.
 
-**Phase 0: foundation, no findings yet.**
+14 rules, 888 live evasion runs, one local model. Read the [findings](docs/findings.md) and the
+[limitations](docs/limitations.md), or browse the [dashboard](docs/dashboard.html).
 
-Phase 0 contains:
+![Pipeline: lab, telemetry, detection, evaluation](docs/assets/architecture.svg)
 
-- A trace schema for agent sessions, aligned with the OpenTelemetry GenAI semantic conventions
-  plus a small set of `adg.*` provenance extensions ([docs/schema.md](docs/schema.md)).
-- A native YAML rule format with framework mappings, hypothesis, limitations and fixtures
-  ([docs/rule-format.md](docs/rule-format.md)).
-- A detection engine with four primitives: `match`, `sequence` (with value binding and
-  provenance following), `threshold` and `baseline` (fitted on dev benign traces)
-  ([docs/engine.md](docs/engine.md)).
-- Content, sequence and behavior detection rules, as hypotheses still to be scored
-  ([docs/detections.md](docs/detections.md)).
-- A rule validator that checks schema, mapping IDs against a catalog, and true positive and
-  false positive fixtures.
-- A metrics stage that produces session-level confusion matrices and rates with Wilson 95%
-  intervals ([docs/metrics.md](docs/metrics.md)).
-- A command line interface, `gauntlet`.
-- Ten synthetic fixture traces with labels, used only to check that the pipeline works.
+## How it works
 
-## Quickstart
+1. **Attack.** Known attack classes run against an instrumented agent, alongside benign work,
+   including hard negatives such as legitimate sessions that read secrets and send messages.
+2. **Telemetry.** Every run becomes a trace of schema-checked JSONL events, aligned with the
+   OpenTelemetry GenAI conventions. Ground truth lives in a separate labels file.
+3. **Detection.** A deterministic engine runs content, sequence and behavior rules over the traces. It
+   never reads labels.
+4. **Baseline.** Rules are hashed and pre-registered, then scored once on a frozen held-out split.
+5. **Evasion.** Payloads are mutated by fixed code and re-executed live, so the traces are what the
+   agent really did. Attack variants run alongside and are kept separate.
+6. **Coverage.** Per-technique results are computed from the scores, never declared.
+
+Rules were never tuned after held-out results were seen. Every rate ships with its numerator and
+denominator, undefined rates are null, and CI re-scores the golden results and fails on any difference.
+
+## Scope and limits
+
+- **One model, one author.** `llama3.1:8b` at temperature 0, with attacks and rules by one author.
+  Results may not transfer.
+- **Relatives across the split.** All 20 succeeded held-out groups have a relative in the dev split, so
+  clean recall may be inflated.
+- **Not measured.** Paraphrase and translation evasion, adaptive attackers, false positives under
+  mutation, and real alert volume.
+- **Exports are not live validated.** Sigma, KQL, SPL and ES|QL files are labeled "converted, not live
+  SIEM validated". No SIEM or Sigma backend has run them, and most rules do not convert
+  ([export.md](docs/export.md)).
+- **Mappings.** Rules map to MITRE ATLAS, OWASP LLM, OWASP Agentic and, for host actions, MITRE ATT&CK.
+  IDs were checked against primary sources; one is unverified, and OWASP LLM uses the 2025 numbers
+  ([mappings.md](docs/mappings.md)).
+- **Not a product.** This is a local research tool with no live monitoring.
+
+The full list is in [docs/limitations.md](docs/limitations.md).
+
+## Reproduce
 
 Requires Python 3.12 or later.
 
@@ -52,86 +72,56 @@ python3.12 -m venv .venv
 pip install -e ".[dev]"
 ```
 
-Run the five commands in order from the repository root:
+Check the rules, the registrations and every generated document against what is committed. None of this
+reads a held-out trace or changes a file:
 
 ```sh
-# 1. Check trace files against the schema and cross-event integrity rules.
-gauntlet validate-traces datasets/fixtures/traces
-
-# 2. Check rules: schema, file names, mapping IDs, and tp/fp fixtures.
 gauntlet validate-rules rules
-
-# 3. Run the rules over traces and write detection records.
-gauntlet scan --rules rules --traces datasets/fixtures/traces --out out/detections.jsonl
-
-# 4. Score detections against ground-truth labels.
-gauntlet metrics --rules rules --traces datasets/fixtures/traces \
-  --detections out/detections.jsonl --labels datasets/fixtures/labels.jsonl \
-  --out out/metrics.json
-
-# 5. Regenerate the JSON Schemas, or check that the committed ones are current.
-gauntlet export-schemas
-gauntlet export-schemas --check
+gauntlet validation verify
+gauntlet coverage build --check
+gauntlet publish build --check
+gauntlet publish numbers
 ```
 
-Notes:
+Re-score the held-out traces and compare with the golden files. This is the only step that reads them.
+Each run appends a row to `docs/heldout-log.md`, as every held-out read does:
 
-- `metrics` takes `--rules` and `--traces` in addition to `--detections` and `--labels`. It
-  re-validates the rule set, checks that rules, traces, labels and detections line up, and
-  records a sha256 of every input in the report.
-- `metrics` defaults to `--split heldout`. Pass `--split dev` to score the development split.
-- `validate-rules`, `scan` and `metrics` run each rule against its fixtures before doing
-  anything else. Fixtures are read from `datasets/fixtures/traces` by default; use
-  `--fixtures` to point elsewhere.
-- Every path recorded in a report or printed in a log is relative to the repository root, so
-  reports do not depend on the working directory. `metrics` refuses inputs outside the root
-  unless `--external-basename` is given, which records their file names only.
-- `out/` is ignored by git. Any numbers produced from the fixtures are pipeline checks on
-  synthetic data, not findings.
+```sh
+GAUNTLET_SCORING_HELDOUT=1 gauntlet validation score --check
+GAUNTLET_SCORING_HELDOUT=1 gauntlet evasion score --check
+```
 
-## Scope and limits
-
-- Local only. The tool reads and writes local files. It is not a monitoring product and has no
-  live SIEM integration.
-- Synthetic fixtures only until Phase 1. Real traces will come from instrumented attack and
-  defense lab environments.
-- Framework mapping IDs (MITRE ATLAS, OWASP, MITRE ATT&CK) are listed in a catalog but are not
-  yet verified against the primary sources. The validator warns about each one. Verification
-  is scheduled for Phase 7.
-- The OpenTelemetry GenAI conventions are still marked as development (experimental). The trace
-  schema is versioned so it can follow them when they change.
+Traces are committed, so scoring needs no model. Producing new traces needs the source lab and a local
+Ollama, which this repository does not include.
 
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
-| `src/agent_detection_gauntlet/schema/` | Trace event, label and detection models; JSON Schema export |
-| `src/agent_detection_gauntlet/rules/` | Rule model, YAML loader, rule validator |
-| `src/agent_detection_gauntlet/engine/` | Field resolution, conditions, primitives, executor |
-| `src/agent_detection_gauntlet/metrics/` | Rates, Wilson intervals, scoring, report model |
-| `src/agent_detection_gauntlet/validation/` | Pre-registration, held-out scoring, generated report |
-| `src/agent_detection_gauntlet/io/` | Strict JSONL reading, trace and label loading |
-| `src/agent_detection_gauntlet/catalog/` | Mapping ID catalogs for ATLAS, OWASP LLM, OWASP Agentic, ATT&CK |
-| `src/agent_detection_gauntlet/cli.py` | The `gauntlet` command |
-| `rules/` | Detection rules, one YAML file per rule, named after the rule id |
-| `datasets/fixtures/` | Synthetic fixture traces and their labels |
-| `schemas/` | Generated JSON Schemas for every file format |
-| `tests/` | Test suite |
+| `rules/` | The 14 detection rules, one YAML file each |
+| `datasets/` | Frozen corpus, evasion inputs and traces, and synthetic test fixtures |
+| `results/` | Golden JSON for the baseline, evasion and per-technique results |
+| `docs/` | Findings, limitations, generated reports, dashboard, method and formats |
+| `src/agent_detection_gauntlet/` | Schema, engine, rules, metrics, validation, evasion, coverage, export, publish |
 | `tools/leak_guard.py` | Standalone guard against personal data, local paths and secrets |
-| `.githooks/` | Pre-commit and pre-push hooks that run the leak guard |
-| `docs/` | Format, engine, metrics and methodology documentation |
+| `tests/` | Test suite |
 
 ## Documentation
 
-- [docs/schema.md](docs/schema.md): trace, label and detection formats
-- [docs/rule-format.md](docs/rule-format.md): rule fields, logic grammar, mappings, validator
-- [docs/engine.md](docs/engine.md): exact engine semantics
-- [docs/metrics.md](docs/metrics.md): metric definitions and the report format
-- `gauntlet validation`: pre-register the rule hashes, score the held-out split, render the report
-- [docs/methodology.md](docs/methodology.md): measurement principles and limitations
-- [ROADMAP.md](ROADMAP.md): phases and gates
-- [SECURITY.md](SECURITY.md): security scope and reporting
-- [CONTRIBUTING.md](CONTRIBUTING.md): setup, checks, the leak guard and git hooks
+- [docs/findings.md](docs/findings.md): the write-up
+- [docs/limitations.md](docs/limitations.md): what the numbers cannot tell you
+- [docs/results-baseline.md](docs/results-baseline.md), [docs/results-evasion.md](docs/results-evasion.md),
+  [docs/coverage.md](docs/coverage.md): full generated tables
+- [docs/detections.md](docs/detections.md): the rule catalog
+- [docs/mappings.md](docs/mappings.md): framework IDs and how they were checked
+- [docs/preregistration.md](docs/preregistration.md), [docs/heldout-log.md](docs/heldout-log.md): the
+  registrations and every held-out read
+- [docs/methodology.md](docs/methodology.md), [docs/metrics.md](docs/metrics.md),
+  [docs/engine.md](docs/engine.md), [docs/schema.md](docs/schema.md),
+  [docs/rule-format.md](docs/rule-format.md), [docs/dataset.md](docs/dataset.md),
+  [docs/export.md](docs/export.md): method and formats
+- [docs/demo.md](docs/demo.md): demo script and recording guide
+- [ROADMAP.md](ROADMAP.md), [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License
 

@@ -1,23 +1,32 @@
-# OWASP Top 10 for LLM Applications entries referenced by rules.
-# verified stays false until the entry is checked against the primary source (Phase 7).
+# OWASP Top 10 for LLM Applications entries referenced by rules, checked in Phase 7. The IDs and
+# titles here are the 2025 edition's. The 2026 edition renumbers them, so this catalog names 2025
+# rather than change frozen rule files. docs/mappings.md lists the result and the 2026 numbers.
 entries:
   - id: LLM01
     name: Prompt Injection
-    url: https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/
-    version: "2026"
-    verified: false
+    url: https://genai.owasp.org/llm-top-10/
+    version: "2025"
+    verified: true
+    checked: "2026-11-02"
+    note: Same ID and title in the 2026 edition.
   - id: LLM02
     name: Sensitive Information Disclosure
-    url: https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/
-    version: "2026"
-    verified: false
+    url: https://genai.owasp.org/llm-top-10/
+    version: "2025"
+    verified: true
+    checked: "2026-11-02"
+    note: Same ID and title in the 2026 edition.
   - id: LLM03
     name: Supply Chain
-    url: https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/
-    version: "2026"
-    verified: false
+    url: https://genai.owasp.org/llm-top-10/
+    version: "2025"
+    verified: true
+    checked: "2026-11-02"
+    note: In the 2026 edition this title is LLM04, and LLM03 is Excessive Agency.
   - id: LLM06
     name: Excessive Agency
-    url: https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/
-    version: "2026"
-    verified: false
+    url: https://genai.owasp.org/llm-top-10/
+    version: "2025"
+    verified: true
+    checked: "2026-11-02"
+    note: In the 2026 edition this title is LLM03, and LLM06 is Unbounded Consumption.

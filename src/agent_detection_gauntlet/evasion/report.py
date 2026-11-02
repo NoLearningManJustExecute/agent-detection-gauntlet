@@ -412,7 +412,7 @@ def render_results(results: EvasionResults, plan: EvasionPlan) -> str:
         "- **Overlap-based provenance.** Content references need verbatim overlap, so a mutated "
         "payload breaks links by construction and the sequence tier depends on the K in use.",
         "- **False positives are not re-measured.** Benign traces were not mutated.",
-        "- **Framework mappings are unverified** against primary sources until Phase 7.",
+        "- **Framework mappings** were checked in Phase 7. See [mappings.md](mappings.md).",
         "",
     ]
     return "\n".join(lines)

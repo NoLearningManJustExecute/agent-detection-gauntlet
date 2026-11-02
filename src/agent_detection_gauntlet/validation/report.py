@@ -196,7 +196,7 @@ LIMITATIONS = [
     "guardrails-on figures are wide and are read as such.",
     "**Precision depends on the corpus mix.** The share of attacks here is a property of the "
     "corpus, not of any deployment.",
-    "**Framework mappings are unverified** against primary sources until Phase 7.",
+    "**Framework mappings** were checked in Phase 7. See [mappings.md](mappings.md).",
 ]
 
 

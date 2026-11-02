@@ -5,7 +5,7 @@ The project answers one question:
 > Which AI-agent detection techniques remain effective when attackers intentionally evade them?
 
 Work is split into eight phases. Each phase has a goal and a gate. A phase is done only when its
-gate is met.
+gate is met. All eight are done; the results are in [docs/findings.md](docs/findings.md).
 
 ## Principles
 
@@ -36,7 +36,7 @@ detail.
 - Hypotheses stay hypotheses until measured. If keyword rules beat sequence or behavior rules on
   some attack class, that is a finding and is reported as one.
 
-## Phase 0: Foundation (in progress)
+## Phase 0: Foundation
 
 **Goal:** the repository, a JSONL trace schema aligned with the OpenTelemetry GenAI semantic
 conventions, the native rule format, a detection engine with `match`, `sequence` (with binding)

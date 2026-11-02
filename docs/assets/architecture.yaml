@@ -1,0 +1,24 @@
+# Source of docs/assets/architecture.svg. Edit this, then run `gauntlet publish build`.
+title: "agent-detection-gauntlet: from a live agent to a measured result"
+stages:
+  - name: Lab
+    items:
+      - Instrumented agent
+      - Local model, temperature 0
+      - Attacks and benign work
+  - name: Telemetry
+    items:
+      - Schema-checked JSONL traces
+      - Ground truth in separate labels
+      - Frozen dev and held-out split
+  - name: Detection
+    items:
+      - Content rules
+      - Sequence rules
+      - Behavior rules
+  - name: Evaluation
+    items:
+      - Rules hashed and pre-registered
+      - Baseline, evasion, coverage
+      - Golden JSON, re-scored in CI
+footer: "Rules are written on dev only. The engine never reads labels. Reports and the dashboard are generated from the golden JSON."

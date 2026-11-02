@@ -239,4 +239,4 @@ AC03, AC09, AC10 never succeeded at baseline and are out of every recall denomin
 - **Temperature-0 determinism.** Runs of one input mostly repeat, and repeats are removed, so more runs would not add independent evidence; a few inputs do produce more than one distinct trace. Distinct inputs are the unit of independence. Wilson intervals treat traces as independent and run narrower than the group structure justifies; the group count sits beside them.
 - **Small samples.** Few groups per class, and few successes with guardrails on. Per-class and guardrails-on figures are wide and are read as such.
 - **Precision depends on the corpus mix.** The share of attacks here is a property of the corpus, not of any deployment.
-- **Framework mappings are unverified** against primary sources until Phase 7.
+- **Framework mappings** were checked in Phase 7. See [mappings.md](mappings.md).

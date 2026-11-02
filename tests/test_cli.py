@@ -76,7 +76,7 @@ def test_full_path_from_traces_to_metrics(
     assert "timestamp" not in metrics.decode().lower().replace("_timestamp", "")
     out = capsys.readouterr()
     assert "ok: 86 events in 10 traces" in out.out
-    assert "not yet verified" in out.err
+    assert "0 warning(s)" in out.out
 
 
 def test_scan_and_metrics_are_byte_identical_across_runs(tmp_path: Path) -> None:
