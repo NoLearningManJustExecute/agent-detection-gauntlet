@@ -43,6 +43,18 @@ its own discarded runner.
   is unaffected.
 - Before and after: no metric existed before. The export ran once redaction was in place.
 
+**4. Three rows of this log were lost by a mistake, not a bug.**
+
+- What happened: the first `evasion score` ran at commit `647f171a3007`, writing its results at
+  2026-11-02T18:51:49Z, followed by `evasion score --check` and `validation score --check`. Their
+  rows were then discarded by a `git checkout` of this file before it was committed. They are not
+  written back by hand, because the rows are not to be edited.
+- What was done: both evasion commands were run again at the same commit, so the rows below at
+  18:52 are those reruns, not the first read. The results file has the same sha256 before and after,
+  `b7219ce8e0433477d23a4fac3c4e74129ed814ab71568dd18f74ed37f263f8b7`. The first read of evasion
+  results is the one stated here.
+- No rule, input or trace changed between those runs, and nothing was tuned.
+
 ## Access log
 
 | Time (UTC) | Commit | Command | Inputs |
@@ -53,3 +65,5 @@ its own discarded runner.
 | 2026-11-02T16:03:07Z | 63cc20c936a7 | validation score --check | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48 |
 | 2026-11-02T18:00:19Z | cad51af5fa53 | evasion mutate | split heldout of the corpus labels |
 | 2026-11-02T18:02:26Z | cad51af5fa53 | evasion mutate | split heldout of the corpus labels |
+| 2026-11-02T18:52:46Z | 647f171a3007 | evasion score | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48, datasets/evasion/k16, datasets/evasion/k24, datasets/evasion/k48 |
+| 2026-11-02T18:52:53Z | 647f171a3007 | evasion score --check | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48, datasets/evasion/k16, datasets/evasion/k24, datasets/evasion/k48 |
