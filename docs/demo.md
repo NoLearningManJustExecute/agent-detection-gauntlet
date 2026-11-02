@@ -1,7 +1,7 @@
 # Demo script and recording guide
 
 A two-minute walk through the result. No video is committed here; this is the script and the checklist
-for making one. Nothing below needs a model or reads a trace.
+for making one. Nothing below needs a model or reads a held-out trace.
 
 ## Before recording
 
@@ -33,13 +33,13 @@ and they are left visible on purpose.
 **3. The result (45 seconds).** Open `docs/dashboard.html`, at the bar chart and then the table.
 
 Say: under payload mutation, content recall falls by 0.398, from 25/48 to 7/57, while sequence and
-behavior barely move. Homoglyphs take content to 0/21. Base64 is not an evasion: 0/66 runs succeeded,
-because the model could not act on it.
+behavior show no measurable drop. Homoglyphs take content to 0/21. Base64 is not an evasion here: 0/66
+runs succeeded, because the model could not act on it.
 
 **4. The honest part (20 seconds).** Stay on the dashboard, at the clean table and per-rule rows.
 
-Say: together the tiers catch 20/28 clean attacks at 1/38 false positives, but no single rule clears the
-bar we registered, and holding is not catching: the combined system still drops.
+Say: together the tiers catch 20/28 clean attacks at 1/38 false positives, but on clean or mutated attacks
+no single rule clears the bar we registered, and holding is not catching: the combined system still drops.
 
 **5. Why to trust it (20 seconds).**
 
@@ -48,7 +48,7 @@ gauntlet publish numbers
 gauntlet coverage build --check
 ```
 
-Say: every published rate must exist in a committed JSON, and CI fails otherwise. Finish on
+Say: CI fails on a published fraction or rate that no committed JSON holds. Finish on
 `docs/limitations.md`.
 
 ## Checklist

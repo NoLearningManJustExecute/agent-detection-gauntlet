@@ -46,9 +46,7 @@ def test_generated_documents_are_current() -> None:
 def test_every_published_rate_is_in_a_results_json() -> None:
     scanned, problems = check_published(ROOT)
     assert [problem.render() for problem in problems] == []
-    assert ROOT / "README.md" in scanned
-    assert ROOT / "docs/findings.md" in scanned
-    assert {Path("README.md"), Path("docs/findings.md")} <= set(PUBLISHED_FILES)
+    assert {ROOT / path for path in PUBLISHED_FILES if path.suffix == ".md"} <= set(scanned)
 
 
 @pytest.mark.parametrize("token", ["7/57", "25/48", "20/28", "1/38", "0/66", "23/46"])
@@ -102,6 +100,14 @@ def test_numbers_command_reports_an_invented_rate(
     assert "99/100 is in no results JSON" in capsys.readouterr().err
     (tmp_path / "README.md").write_text("recall 20/28\n", encoding="utf-8")
     assert main(["publish", "numbers", "--root-dir", str(tmp_path)]) == 0
+
+
+def test_nothing_to_scan_fails_closed(tmp_path: Path) -> None:
+    for path in RESULT_FILES:
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_bytes((ROOT / path).read_bytes())
+    with pytest.raises(GauntletError, match="no published document"):
+        check_published(tmp_path)
 
 
 def test_missing_results_fail_closed(tmp_path: Path) -> None:

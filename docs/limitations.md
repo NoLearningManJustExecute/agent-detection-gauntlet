@@ -13,21 +13,24 @@ Read these with [findings.md](findings.md). They limit what the numbers can be t
   like.
 - **Variant-group splits leave relatives across the split.** Whole groups go to one split, but 20 of 20
   succeeded held-out groups have a parent, sibling or seeded child in dev. They share the attack's
-  mechanism and target, so clean recall may be inflated. With those traces set aside, nothing is left
-  to score.
+  mechanism and target, so clean recall may be inflated. The registered set-asides read 11/12 and 8/9,
+  on few traces. With every relative set aside, in a row added after scoring, nothing is left to score.
 - **Small samples.** 28 succeeded held-out traces in 20 groups. Per-class figures are all small-N, and
-  AC06 and AC12A are flagged underpowered.
+  AC06 and AC12A are flagged underpowered. The 38 benign traces are 19 groups run in two guardrail arms,
+  and with guardrails off the combined false positive rate is 1/19 = 0.053.
 - **Temperature 0.** Runs of one input mostly repeat, and repeats are removed, so more runs would not
   add independent evidence. Distinct inputs are the unit of independence. Wilson intervals treat traces
   as independent, so the group bootstrap intervals are the figures to read for comparisons.
-- **Synthetic sandbox.** The agent runs against fixtures, not a real system. The names in traces (alex,
-  jordan, sam, taylor, casey, morgan) are synthetic identities on the reserved `.test` domain, not real
-  people.
+- **Synthetic sandbox.** The agent runs against fixtures, not a real system. The names in traces are
+  synthetic identities on the reserved `.test` domain, not real people; [dataset.md](dataset.md) lists
+  them.
 
 ## Evasion
 
 - **Paraphrase and translation are not measured as evasion.** They were spent seeding the corpus, so
   the rules were written against dev relatives of those wordings.
+- **Base64 result is about this model.** Offline, with no model, bare base64 takes content rules from
+  12/23 to 2/23. A model that can decode could make it a real evasion.
 - **Survivors only.** Recall under mutation is measured on attacks that still worked. Where few survive,
   the row rests on few attacks.
 - **Bases were selected for success.** Their attack success is near 1 by construction, so part of the
@@ -63,8 +66,9 @@ Read these with [findings.md](findings.md). They limit what the numbers can be t
   the Sigma parses and says what was meant, and nothing more. Most rules do not convert, and those that
   do assume an ingest pipeline that does not exist. See [export.md](export.md).
 - **The release workflow has never been dispatched.**
-- **One mapping is unverified, and OWASP LLM uses the 2025 numbers.** See [mappings.md](mappings.md). A
-  rule's mapping is its author's claim about the technique it detects.
+- **One rule mapping is unverified, and OWASP LLM uses the 2025 numbers.** IDs quoted from the source
+  threat model are outside that check, apart from what [mappings.md](mappings.md) notes. A rule's mapping
+  is its author's claim about the technique it detects.
 
 ## Process
 

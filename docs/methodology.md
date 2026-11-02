@@ -84,7 +84,7 @@ detected. Definitions are in [metrics.md](metrics.md).
   detection files and metrics reports. Neither contains wall-clock time.
 - Every metrics report records the sha256 of each input file, the package version, and the git
   commit and dirty flag of the code that produced it.
-- Agent runs in later phases use a fixed seed and a fixed temperature, with N runs per case, so
+- Agent runs use a fixed seed and a fixed temperature, with N runs per case, so
   that variation between runs can be measured rather than hidden.
 
 ## Synthetic fixtures

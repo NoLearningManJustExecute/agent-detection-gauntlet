@@ -81,7 +81,7 @@
     },
     {
       "path": "src/agent_detection_gauntlet/catalog/atlas.yaml",
-      "sha256": "c83b95e662e571750aeb98c1702572d3f12ba02d69b1ca1fe9ef504c4b32e558"
+      "sha256": "456d913cadcdd61a81c6324553dc5dd45c7c152504d1a60334c7205f4f3161af"
     },
     {
       "path": "src/agent_detection_gauntlet/catalog/owasp_llm.yaml",

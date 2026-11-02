@@ -311,10 +311,11 @@ def _limitations(report: CoverageReport) -> list[str]:
         "edition's, where LLM03 is Excessive Agency and LLM06 is Unbounded Consumption. The class "
         "map matches by title. Rule files are frozen and keep their IDs. See "
         "[mappings.md](mappings.md).",
-        "- **One mapping is unverified.** AML.T0057 matches ATLAS through 2026.09 but is absent "
-        "from 2026.10. Every other ID matched its primary source; see [mappings.md](mappings.md). "
-        "A rule's mapping is still its author's claim about the technique it detects, and coverage "
-        "inherits that claim.",
+        "- **One catalog mapping is unverified.** AML.T0057 matches ATLAS through 2026.09 but is "
+        "absent from 2026.10. Every other catalog ID matched its primary source. IDs quoted from "
+        "the source threat model are outside the catalog; see [mappings.md](mappings.md). A rule's "
+        "mapping is still its author's claim about the technique it detects, and coverage inherits "
+        "that claim.",
         "- **Single model and single-author corpus**, as in the baseline and evasion reports.",
         "",
     ]

@@ -399,5 +399,4 @@ How it reads:
   trusted retrieval. `syn-0003` has an untrusted retrieval and a send, but the send does not
   derive from the retrieval. Neither may fire. The rule also names dev traces, listed in the file.
 - **Mappings** reference one ID per framework family that applies. No host action occurs, so
-  `attack` is empty. All three IDs are currently unverified catalog entries, so validation
-  prints three warnings.
+  `attack` is empty. A mapping to an unverified catalog entry prints a validation warning.

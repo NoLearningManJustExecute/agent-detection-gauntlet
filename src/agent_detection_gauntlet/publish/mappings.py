@@ -14,7 +14,7 @@ METHOD = [
     "How each family was checked:",
     "",
     "- **MITRE ATLAS.** The `dist/v6/ATLAS-2026.10.yaml` release in the mitre-atlas/atlas-data "
-    "repository, and each technique page on atlas.mitre.org.",
+    "repository, and each technique page on atlas.mitre.org, which needs a browser to render.",
     "- **OWASP LLM.** The 2025 list at genai.owasp.org/llm-top-10, and the 2026 list in the "
     "GenAI-Security-Project/GenAI-LLM-Top10 repository, published August 4, 2026.",
     "- **OWASP Agentic.** The published document, Version 2026, December 2025, downloaded from the "
@@ -22,18 +22,20 @@ METHOD = [
     "- **MITRE ATT&CK.** The technique page, in ATT&CK v20.",
     "",
 ]
-NOTES = [
-    "## Two things to know",
-    "",
+OWASP_NOTE = [
     "**OWASP LLM uses the 2025 numbers.** The rules were written with the 2025 edition's numbers, "
-    "and an earlier catalog labeled them 2026 by mistake. In the 2026 edition, LLM03 is Excessive "
-    "Agency, LLM04 is Supply Chain and LLM06 is Unbounded Consumption. Rule files are frozen under "
-    "the pre-registration, so the catalog now names the edition its IDs match. To read a rule in "
-    "2026 terms: LLM03 here is LLM04:2026, and LLM06 here is LLM03:2026.",
+    "and an earlier catalog labeled them 2026 by mistake. Rule files are frozen under the "
+    "pre-registration, so the catalog now names the edition its IDs match. To read a rule in 2026 "
+    "terms: LLM03 here is LLM04:2026, and LLM06 here is LLM03:2026.",
     "",
-    "**AML.T0057 is unverified.** ATLAS lists LLM Data Leakage through release 2026.09 and not in "
-    "2026.10, whose changelog moves part of it to AML.T0085.002. The rules that map to it keep the "
-    "ID, and the validator warns on each one. Nothing here invents a replacement.",
+]
+OUTSIDE_NOTE = [
+    "**IDs outside this catalog.** The attacked-with-no-rule list in the per-technique report "
+    "quotes IDs as the source threat model writes them. No rule references them, and they are not "
+    "in this table. A spot check on 2026-11-02 found AML.T0011.002, AML.T0085.001, AML.T0086, "
+    "AML.T0110 and AML.T0115.002 in ATLAS 2026.10, ASI09 in the Agentic document and LLM08:2026 in "
+    "the 2026 list. AML.T0056 is absent from ATLAS 2026.10, whose changelog lists AML.T0085.003 as "
+    "moved from it.",
     "",
 ]
 
@@ -65,6 +67,12 @@ def render_mappings(catalog: Catalog) -> str:
         "",
         f"Unverified: {', '.join(unverified) if unverified else 'none'}.",
         "",
-        *NOTES,
+        "## Notes",
+        "",
     ]
+    for family in FAMILIES:
+        for entry in catalog.families[family].values():
+            if entry.note:
+                lines += [f"- **{entry.id}.** {entry.note}"]
+    lines += ["", *OWASP_NOTE, *OUTSIDE_NOTE]
     return "\n".join(lines).rstrip("\n") + "\n"

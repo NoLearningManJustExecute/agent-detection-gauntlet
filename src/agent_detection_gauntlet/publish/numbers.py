@@ -3,7 +3,8 @@
 Reads the three golden files, never a trace. Fractions and three-decimal rates must appear as such
 in a JSON. "N percent" or "N points" must be some rate there, rounded, which is a coarse check,
 since many rates exist. Plain counts in prose are not checked, since a bare integer could match
-almost anything; the pre-public audit reads them.
+almost anything; the pre-public audit reads them. A token only has to exist somewhere in a JSON, so
+this catches invented numbers, not a real number attached to the wrong claim, and it ignores signs.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ PUBLISHED_FILES = (
     Path("README.md"),
     Path("docs/findings.md"),
     Path("docs/limitations.md"),
+    Path("docs/demo.md"),
     Path("docs/index.html"),
     Path("docs/assets/demo-banner.svg"),
 )
@@ -107,6 +109,8 @@ def untraced_tokens(text: str, known: Traceable) -> Iterable[tuple[int, str]]:
 def check_published(root: Path) -> tuple[list[Path], list[Untraced]]:
     known = traceable(load_results(root / path) for path in RESULT_FILES)
     scanned = [root / path for path in PUBLISHED_FILES if (root / path).is_file()]
+    if not scanned:
+        raise GauntletError("no published document to check")
     problems = [
         Untraced(path, line, token)
         for path in scanned

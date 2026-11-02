@@ -5,7 +5,7 @@ The project answers one question:
 > Which AI-agent detection techniques remain effective when attackers intentionally evade them?
 
 Work is split into eight phases. Each phase has a goal and a gate. A phase is done only when its
-gate is met. All eight are done; the results are in [docs/findings.md](docs/findings.md).
+gate is met. The results are in [docs/findings.md](docs/findings.md).
 
 ## Principles
 

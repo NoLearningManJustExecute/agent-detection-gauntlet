@@ -32,6 +32,6 @@ entries:
     verified: false
     checked: "2026-11-02"
     note: >-
-      Present through ATLAS 2026.09, absent from 2026.10, whose changelog moves part of it to
-      AML.T0085.002. It does not match the current release, so it stays unverified. Rule files are
-      frozen and keep the id.
+      Present through ATLAS 2026.09, absent from 2026.10, whose changelog lists AML.T0085.002 as
+      moved from it. It does not match the current release, so it stays unverified. Rule files are
+      frozen and keep the id, and the validator warns on each one.

@@ -4,8 +4,11 @@ Measures which AI-agent detection techniques stay effective when attackers delib
 
 > Which AI-agent detection techniques remain effective when attackers intentionally evade them?
 
-**Character tricks blind keyword detection. Sequence and behavior detection hold, at the recall they
-started with.**
+**Homoglyph and zero-width characters blind keyword detection, while sequence and behavior detection
+hold.**
+
+Pooled over payload mutations, guardrails off. Recall is over attacks that still succeeded, which was
+138/396 runs:
 
 | Tier | Recall under payload mutation | Same attacks, unmutated | Change [95% interval] |
 |---|---|---|---|
@@ -14,15 +17,20 @@ started with.**
 | behavior | 21/57 = 0.368 | 20/48 = 0.417 | -0.048 [-0.092, +0.012] |
 | all tiers | 28/57 = 0.491 | 39/48 = 0.812 | -0.321 [-0.531, -0.065] |
 
-- **Homoglyphs and zero-width characters** take content recall to 0/21 and 1/23.
-- **Base64 is not an evasion here.** It broke the attack: 0/66 runs succeeded, because the model could
-  not act on it.
-- **Together, on clean attacks,** all tiers catch 20/28 = 0.714 [0.529, 0.847] of successful attacks at
-  a false positive rate of 1/38 = 0.026 [0.005, 0.135].
-- **Individual rules are weak.** No single rule clears the registered bar of 0.5 recall; the best is
-  7/28 = 0.250. The strength is in the combination, and the combination still drops under mutation.
+- **Homoglyphs and zero-width characters** take content recall to 0/21 and 1/23. Fullwidth characters
+  did not move it, because the rules normalize them away.
+- **"Hold" means no measurable drop,** not good recall: both pooled intervals include zero, and behavior
+  and sequence still miss most of these attacks.
+- **Base64 is not an evasion here.** It broke the attack: 0/66 runs succeeded in each encoding, because
+  the model could not act on it. A model that can decode could change that.
+- **Together, on clean held-out attacks,** all tiers catch 20/28 = 0.714 [0.529, 0.847] of successful
+  attacks, with a false positive rate of 1/38 = 0.026 [0.005, 0.135] over both guardrail arms. That is a
+  different population from the 39/48 above, whose attacks were chosen because they succeeded.
+- **Individual rules are weak.** On clean or mutated attacks, no single rule clears the registered bar
+  of 0.5 recall; the best is 7/28 = 0.250. The strength is in the combination, and the combination still
+  drops under mutation.
 
-14 rules, 888 live evasion runs, one local model. Read the [findings](docs/findings.md) and the
+14 rules, 887 scored live evasion runs, one local model. Read the [findings](docs/findings.md) and the
 [limitations](docs/limitations.md), or browse the [dashboard](docs/dashboard.html).
 
 ![Pipeline: lab, telemetry, detection, evaluation](docs/assets/architecture.svg)
@@ -35,7 +43,7 @@ started with.**
    OpenTelemetry GenAI conventions. Ground truth lives in a separate labels file.
 3. **Detection.** A deterministic engine runs content, sequence and behavior rules over the traces. It
    never reads labels.
-4. **Baseline.** Rules are hashed and pre-registered, then scored once on a frozen held-out split.
+4. **Baseline.** Rules are hashed and pre-registered, then scored on a frozen held-out split.
 5. **Evasion.** Payloads are mutated by fixed code and re-executed live, so the traces are what the
    agent really did. Attack variants run alongside and are kept separate.
 6. **Coverage.** Per-technique results are computed from the scores, never declared.
@@ -48,15 +56,15 @@ denominator, undefined rates are null, and CI re-scores the golden results and f
 - **One model, one author.** `llama3.1:8b` at temperature 0, with attacks and rules by one author.
   Results may not transfer.
 - **Relatives across the split.** All 20 succeeded held-out groups have a relative in the dev split, so
-  clean recall may be inflated.
+  clean recall may be inflated, and no held-out group is free of this to test on.
 - **Not measured.** Paraphrase and translation evasion, adaptive attackers, false positives under
   mutation, and real alert volume.
 - **Exports are not live validated.** Sigma, KQL, SPL and ES|QL files are labeled "converted, not live
   SIEM validated". No SIEM or Sigma backend has run them, and most rules do not convert
   ([export.md](docs/export.md)).
 - **Mappings.** Rules map to MITRE ATLAS, OWASP LLM, OWASP Agentic and, for host actions, MITRE ATT&CK.
-  IDs were checked against primary sources; one is unverified, and OWASP LLM uses the 2025 numbers
-  ([mappings.md](docs/mappings.md)).
+  The IDs rules use were checked against primary sources; one is unverified, and OWASP LLM uses the
+  2025 numbers ([mappings.md](docs/mappings.md)).
 - **Not a product.** This is a local research tool with no live monitoring.
 
 The full list is in [docs/limitations.md](docs/limitations.md).
@@ -84,7 +92,8 @@ gauntlet publish numbers
 ```
 
 Re-score the held-out traces and compare with the golden files. This is the only step that reads them.
-Each run appends a row to `docs/heldout-log.md`, as every held-out read does:
+Each run appends a row to `docs/heldout-log.md`, as every held-out read does. In PowerShell, set
+`$env:GAUNTLET_SCORING_HELDOUT = "1"` first:
 
 ```sh
 GAUNTLET_SCORING_HELDOUT=1 gauntlet validation score --check
