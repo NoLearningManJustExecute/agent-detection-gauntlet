@@ -1,0 +1,55 @@
+name: Release
+
+# Manual dispatch only. Builds and checks the bundle and keeps it as a workflow artifact on a tag.
+# It publishes nothing, cannot write to the repository, and never changes repository settings.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Lint native rules
+        run: gauntlet lint-rules rules
+      - name: Sigma round trip and exact text checks
+        run: pytest tests/test_export.py --no-cov
+      - name: Build dist
+        run: gauntlet export --format all --out dist/rules
+      - name: Leak guard on tree and history
+        env:
+          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+        run: python tools/leak_guard.py --all
+      - name: Leak guard on dist
+        env:
+          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+        run: |
+          test -n "$(find dist -type f)"
+          find dist -type f | sort | while read -r file; do
+            python tools/leak_guard.py --text "$file"
+          done
+      - name: Bundle
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: tar --sort=name --mtime='1970-01-01 UTC' --owner=0 --group=0 --numeric-owner -czf "adg-rules-$TAG.tar.gz" -C dist rules
+      - name: Keep the bundle as a workflow artifact
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: adg-rules-${{ github.ref_name }}
+          path: adg-rules-*.tar.gz
+          if-no-files-found: error
