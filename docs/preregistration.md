@@ -363,3 +363,9 @@ Everything above stands as committed. These notes correct it.
   guard blocked the first generated input file, before anything was committed or run and before any
   trace or result of this phase existed. The registered chunk size and instruction line stand. See
   the bug record in [heldout-log.md](heldout-log.md).
+- The registered source commit `90e9fb54ca4dcf77933a4494b3ccbc80a5576481` ran every input. The
+  export used a later commit, `6375199355d2f9ff719befd187e55e85d22d3211`, which only adds a redaction for text the model wrote. See
+  the bug record in [heldout-log.md](heldout-log.md). `gauntlet evasion build --export-commit` names
+  it on purpose, and the evasion manifest records both commits.
+- One of the 888 registered runs ended in an error and is excluded from every rate: run 2 of
+  AC01-S10-M02, guardrails on. The results record the count.

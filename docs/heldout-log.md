@@ -30,6 +30,19 @@ its own discarded runner.
   `@`. No rule changed. See the erratum in preregistration.md.
 - Before and after: no metric existed before. The second `evasion mutate` row below is the rerun.
 
+**3. The exporter refused text the model wrote.**
+
+- Bug: the export's leak guard blocked two things in model output: a dash character in 3
+  `llm.response` events of AC07-S24-M05, and an address the model garbled onto a made-up domain that
+  is not reserved, in 6 `tool.call` and 6 `tool.result` events of AC05-S05-M06. Event counts are at
+  K=24, before dedupe, guardrails off. Nothing identified anyone. Nothing had been exported or scored.
+- Fix: exporter redaction only, in source lab commit `6375199355d2f9ff719befd187e55e85d22d3211`, with tests. The dash becomes a hyphen.
+  The address keeps its text with `.invalid` appended, so it is still a distinct address outside the
+  allowlist. No rule changed, and the runs were not repeated. Labels come from the run log, which
+  is unchanged, so no verdict moved. Corpus exports already pass the same patterns, so the corpus
+  is unaffected.
+- Before and after: no metric existed before. The export ran once redaction was in place.
+
 ## Access log
 
 | Time (UTC) | Commit | Command | Inputs |
