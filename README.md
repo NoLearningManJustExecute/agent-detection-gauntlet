@@ -43,6 +43,23 @@ Pooled over payload mutations, guardrails off. Recall is over attacks that still
 
 ![Pipeline: lab, telemetry, detection, evaluation](docs/assets/architecture.svg)
 
+## Why it matters
+
+A detection's score on clean attacks says nothing about what it is worth once an attacker changes a few
+characters. Here the attack keeps working and the alert goes away: under homoglyphs the attack still succeeded in 54/66 runs,
+and the content tier caught 0/21 of them.
+
+The same measurement says where to spend effort. Behavior and sequence rules did not measurably drop,
+though they miss most attacks either way. Keyword rules are worth keeping for what they catch on clean
+attacks, not as a primary control. Rules were frozen before scoring and CI re-scores the results byte for
+byte, so you can check these numbers rather than trust me.
+
+## Demo
+
+No recording is published yet. The script is in [docs/demo.md](docs/demo.md).
+
+<!-- GIF goes here. Owner: record with a generic shell prompt, no paths, no email in git config on screen, and scrub frames before posting. -->
+
 ## How it works
 
 1. **Attack.** Known attack classes run against an instrumented agent, alongside benign work,
@@ -135,6 +152,32 @@ Ollama, which this repository does not include.
 To change a pin, edit `pyproject.toml` and re-run the command in the lockfile's header with `uv` installed.
 A pin that moves a golden file fails `regression`.
 
+## Lessons learned
+
+- **Check the attack survived before calling it an evasion.** In an offline check, bare base64 took content
+  rules from 12/23 to 2/23, which looks like a strong evasion. Run live, it succeeded in 0/66 runs, which I
+  read as this model not acting on the encoded text. Scoring mutated text without re-running the attack would have reported
+  the wrong finding.
+- **Re-run the mutation. Do not edit the trace.** Editing captured text leaves the tool sequence as it was, so
+  behavior rules would hold by construction. Re-running is slower, and it is why that result means anything.
+- **One normalization step looks like the explanation for a whole result.** NFKC folds fullwidth characters and does
+  not fold lookalikes or remove zero-width marks, and only fullwidth left content recall unchanged. Nothing toggled
+  NFKC, so that is a reading, not a measurement, and the frozen rules mean the likely fix for zero-width stays untested.
+- **Pre-registration costs you the comfortable answer.** Pooled over clean or mutated attacks, no single rule cleared
+  the bar I set, and the best was 7/28. I kept the bar. The combined figures describe the system better, but they sit next to that result, not
+  in place of it.
+- **A group split is not independence.** I split whole variant groups, and flagged before scoring that relatives
+  crossed the split. I still underestimated it: 20 of 20 succeeded held-out groups have a relative in dev, so no clean
+  subset is left to test on. Next time I would split by mechanism and write held-out attacks separately.
+- **Combining beat any one rule.** Content and behavior tied at 12/28 and caught mostly different attacks, which is
+  how all tiers reached 20/28. Removing a cheap tier takes real weight with it, which is the evasion result.
+- **Audit the scorer as hard as the rules.** A pre-merge audit found the scorer removing more than one registered
+  set-aside said it would, after the first scoring run. The fix and the before and after numbers are a public
+  record in [docs/heldout-log.md](docs/heldout-log.md).
+- **Pin from the first day.** For most of this project, the byte-exact check ran against dependency ranges that
+  resolved fresh on every run. It held, but nothing guaranteed that. The lockfile came last, and it should have
+  come first.
+
 ## Repository layout
 
 | Path | Contents |
@@ -151,6 +194,7 @@ A pin that moves a golden file fails `regression`.
 
 - [docs/findings.md](docs/findings.md): the write-up
 - [docs/limitations.md](docs/limitations.md): what the numbers cannot tell you
+- [docs/threat-model.md](docs/threat-model.md): assets, abuse cases, the controls that exist, and the risk left
 - [docs/results-baseline.md](docs/results-baseline.md), [docs/results-evasion.md](docs/results-evasion.md),
   [docs/coverage.md](docs/coverage.md): full generated tables
 - [docs/detections.md](docs/detections.md): the rule catalog

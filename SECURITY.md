@@ -24,7 +24,10 @@ Rules and traces are treated as trusted local input.
   on any problem, but they are not sandboxed. Treat trace content from unknown sources with the
   same care as any other untrusted data.
 - The `metrics` command runs `git` in the directory the package is installed from to record the
-  commit and dirty flag. It does not run any other external program.
+  commit and dirty flag, and the held-out firewall runs `git` to record the commit in its log. The
+  tool does not run any other external program.
+
+The full threat model is in [docs/threat-model.md](docs/threat-model.md).
 
 ## Reporting a vulnerability
 

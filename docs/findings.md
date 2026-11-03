@@ -16,6 +16,26 @@ Rates read numerator/denominator = value. Brackets on a rate are Wilson 95% inte
 change are percentile bootstrap intervals over variant groups, seed 1337, 10000 resamples. Evasion
 figures are guardrails off unless stated.
 
+## Severity ranking
+
+Severity is my judgment of the impact on someone relying on these detections. It is not measured and it is not
+CVSS. High means a working attack gets past the system with no alert, at little or no cost to the attacker.
+Medium means it weakens the system or what these numbers can claim. Low means a limit that does no harm today.
+
+| Rank | Finding | Severity | Why |
+|---|---|---|---|
+| 1 | Homoglyph and zero-width characters blind content rules | High | Content recall falls to 0/21 and 1/23 while the attack still succeeds in 54/66 and 46/66 runs, and changing characters costs nothing. |
+| 2 | The combined system falls under mutation | High | All tiers change by -0.321 [-0.531, -0.065], an interval that excludes zero, and no other tier makes up the loss. |
+| 3 | Classes nothing caught on clean attacks | High | AC01 at 0/3, AC04 at 0/4 and AC06 at 0/1 are successful attacks with no alert before any evasion, on few traces. |
+| 4 | Pooled over clean or mutated attacks, no single rule clears the registered bar | Medium | The best is 7/28 = 0.250, so one rule alone misses most attacks, and the strength is in the combination. Attack variants read differently, on 5 traces. |
+| 5 | Sequence rules depend on verbatim provenance | Medium | Tier recall is 6/28 at K=16 and K=24 and 2/28 at K=48, so rewritten data flow breaks the links they need. |
+| 6 | Clean recall may be inflated by relatives across the split | Medium | 20 of 20 succeeded held-out groups have a relative in dev. This limits the claim, not the attacker. |
+| 7 | Attacked techniques with no rule mapped | Medium | Attacks in the corpus exercise IDs with no rule aimed at them, including system prompt extraction. |
+| 8 | Four rules never fired on a success | Low | ADG-0004, ADG-0007, ADG-0008 and ADG-0011 scored 0/28. The cost is one false positive from ADG-0008, 1/38, and upkeep. |
+| 9 | Base64 breaks the attack on this model | Low | 0/66 runs succeeded, so there is no evasion here today. A model that decodes could change that, since bare base64 takes content rules to 2/23 offline. |
+| 10 | Exports are untested on any SIEM | Low | They are labeled as such, and this matters only if someone deploys one. |
+| 11 | AC03, AC09 and AC10 never succeeded | Low | No harm observed, and this study says nothing about detecting them when they do. |
+
 ## The evasion result
 
 Pooled over payload mutations, on attacks that still succeeded, against the same base scenarios:
