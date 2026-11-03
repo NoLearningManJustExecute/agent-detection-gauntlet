@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agent-detection-gauntlet</title>
+<meta name="color-scheme" content="light dark">
+<script>
+try { var t = localStorage.getItem("gauntlet-theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+</script>
 <meta name="description" content="Measures which AI-agent detection techniques stay effective when attackers deliberately evade them.">
 <style>
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap");
@@ -126,8 +130,8 @@ footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
       <li>pre-registered</li>
     </ul>
     <div class="term" role="img" aria-label="Under homoglyph mutation, content rules fall from 10/19 to 0/21. Behavior rules go from 10/19 to 9/21.">
-      <div class="term-top"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span>homoglyph mutation, re-executed live: measured recall</span></div>
-      <pre><span class="ln"><span class="a">&gt; </span>content keyword rules</span><span class="ln m">  same attacks, unmutated: 10/19 = 0.526</span><span class="ln d">  x mutated: 0/21 = 0.000, every attack slips past</span><span class="ln"><span class="a">&gt; </span>behavior rules</span><span class="ln m">  same attacks, unmutated: 10/19 = 0.526</span><span class="ln s">  + mutated: 9/21 = 0.429, still firing on what keywords miss</span><span class="ln"><span class="a">&gt; </span>behavior survives what blinds keywords<span class="cursor"></span></span></pre>
+      <div class="term-top"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span>homoglyph mutation, guardrails off, re-executed live: measured recall</span></div>
+      <pre><span class="ln"><span class="a">&gt; </span>content keyword rules</span><span class="ln m">  same bases, unmutated: 10/19 = 0.526</span><span class="ln d">  x mutated: 0/21 = 0.000, every attack slips past</span><span class="ln"><span class="a">&gt; </span>behavior rules</span><span class="ln m">  same bases, unmutated: 10/19 = 0.526</span><span class="ln s">  + mutated: 9/21 = 0.429, a small drop, and still misses 12</span><span class="ln"><span class="a">&gt; </span>behavior survives what blinds keywords<span class="cursor"></span></span></pre>
     </div>
   </div>
 
@@ -140,7 +144,7 @@ footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
 
   <section aria-labelledby="evasion">
     <h2 id="evasion">Recall change under payload mutation</h2>
-    <p class="sub">Pooled over mutations, guardrails off, on attacks that still succeeded, against the same attacks unmutated. Brackets are 95% intervals over variant groups.</p>
+    <p class="sub">Pooled over mutations, guardrails off, on attacks that still succeeded (138/396 runs), against the same base scenarios unmutated. Brackets are 95% intervals over variant groups.</p>
     <div class="card">
       <div class="tier"><span>Content</span><div class="track"><div class="fill" style="--w:39.8%"></div></div><span class="val">-0.398</span></div>
       <p class="detail">7/57 against 25/48 [-0.604, -0.170]</p>
@@ -152,6 +156,7 @@ footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
       <p class="detail">28/57 against 39/48 [-0.531, -0.065]</p>
       <div class="callout"><strong>Base64: the attack broke, it did not evade.</strong> 0/66 runs succeeded in each encoding, because this model could not act on the encoded text. There was no successful attack left to detect, so this is not an attacker win here. A model that can decode could change that.</div>
       <p class="caveat">Homoglyphs took content recall to 0/21, a change of -0.526. Zero-width characters took it to 1/23, a change of -0.519. Fullwidth characters did not move it, because the rules normalize them away.</p>
+      <p class="caveat">Under homoglyphs alone, all tiers together fell from 16/19 to 9/21, a change of -0.414 [-0.683, -0.070], so 12 of 21 successful attacks got past every tier. Behavior's -0.098 [-0.167, +0.000] and sequence's -0.068 [-0.143, +0.000] do not exclude a real loss.</p>
     </div>
   </section>
 
@@ -163,7 +168,8 @@ footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
       <div class="card stat"><b><span data-count="40">40</span> points</b><span>Content recall lost under evasion, pooled: <code>-0.398</code>.</span></div>
       <div class="card stat"><b>Held</b><span>Behavior <code>-0.048</code> and sequence <code>-0.005</code>. Neither interval excludes zero.</span></div>
     </div>
-    <p class="caveat">Individual rules are weak: on clean or mutated attacks, no single rule clears the registered bar of 0.5 recall, and the best is <code>7/28 = 0.250</code>. The combination is what works.</p>
+    <p class="caveat">Do not subtract across these. The 71 percent is all clean held-out attacks, while the pooled figures above use bases chosen because they succeeded, so they are different populations.</p>
+    <p class="caveat">Individual rules are weak: pooled over clean or mutated attacks, no single rule clears the registered bar of 0.5 recall at 0.05 FPR, and the best is <code>7/28 = 0.250</code>. Four rules caught nothing on clean attacks. The combination is what works.</p>
   </section>
 
   <section aria-labelledby="how">
@@ -182,7 +188,10 @@ footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
     <ul class="limits">
       <li>One local model and one author. Results may not transfer.</li>
       <li>All 20 succeeded held-out groups have a relative in the dev split, so clean recall may be inflated.</li>
-      <li>3 further attack classes never succeeded against this model, so detecting them is untested.</li>
+      <li>Small samples: 28 succeeded clean traces, and 38 benign traces that are 19 groups run in two guardrail arms. False positives were not re-measured under mutation.</li>
+      <li>Sequence rules depend on verbatim text overlap, so spelling can still reach them: at the longest overlap tested they score 0/21 on homoglyphs.</li>
+      <li>Beyond the 9 classes with successes, 3 attack classes never succeeded against this model, so detecting them is untested.</li>
+      <li>With guardrails on, mutated attacks succeeded in only 2/395 runs, too few to read a tier result from. The tier figures here are guardrails off.</li>
       <li>Mutations are mechanical, not an adaptive attacker. Paraphrase and translation evasion were not measured.</li>
       <li>Converted SIEM rules have not been run on any SIEM.</li>
     </ul>
@@ -207,15 +216,11 @@ footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
     <p class="sub" style="margin:0">Companion projects: <a href="https://github.com/NoLearningManJustExecute/rag-attack-lab">rag-attack-lab</a> attacks, <a href="https://github.com/NoLearningManJustExecute/agent-risk-framework">agent-risk-framework</a> defends, and this one detects.</p>
   </section>
 </main>
-<footer><div class="wrap">Every rate on this page is in a committed results file, and CI fails on one that is not.</div></footer>
+<footer><div class="wrap">Every rate on this page comes from a committed results file. CI fails on one that no file holds, and tests pin the main figures to their cells.</div></footer>
 <script>
 (function () {
   var root = document.documentElement;
   var key = "gauntlet-theme";
-  try {
-    var saved = localStorage.getItem(key);
-    if (saved === "light" || saved === "dark") root.setAttribute("data-theme", saved);
-  } catch (e) {}
   document.getElementById("theme").addEventListener("click", function () {
     var current = root.getAttribute("data-theme");
     if (!current) current = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -223,8 +228,8 @@ footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
     root.setAttribute("data-theme", next);
     try { localStorage.setItem(key, next); } catch (e) {}
   });
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  document.querySelectorAll("[data-count]").forEach(function (node) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) return;
+  function count(node) {
     var target = Number(node.getAttribute("data-count"));
     var start = performance.now();
     function tick(now) {
@@ -233,7 +238,15 @@ footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
       if (done < 1) requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
-  });
+  }
+  var seen = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      seen.unobserve(entry.target);
+      count(entry.target);
+    });
+  }, { threshold: 0.4 });
+  document.querySelectorAll("[data-count]").forEach(function (node) { seen.observe(node); });
 })();
 </script>
 </body>

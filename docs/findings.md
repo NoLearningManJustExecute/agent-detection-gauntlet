@@ -114,7 +114,8 @@ are in [results-baseline.md](results-baseline.md).
 
 ## Individual rules are weak
 
-On clean or mutated attacks, no single rule clears the registered bar of 0.5 recall at 0.05 FPR. The
+Pooled over clean or mutated attacks, no single rule clears the registered bar of 0.5 recall at 0.05
+FPR. The
 best on clean attacks is ADG-0012 at 7/28 = 0.250 [0.127, 0.434], and on payload mutations the same rule
 at 12/57 = 0.211. The per-technique table in [coverage.md](coverage.md) therefore reads as it does. The
 bar was fixed before any held-out result and has not moved. It tests one rule standing alone, which is a

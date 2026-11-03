@@ -23,13 +23,13 @@
   <text class="tag" x="52" y="70" font-size="14">Which detections stay effective when attackers evade them? Measured, with denominators.</text>
   <rect class="panel" x="30" y="92" width="800" height="224" rx="12" stroke-width="1"/>
   <circle cx="54" cy="107" r="5" fill="#ff5f56"/><circle cx="70" cy="107" r="5" fill="#ffbd2e"/><circle cx="86" cy="107" r="5" fill="#27c93f"/>
-  <text class="title" x="112" y="111" font-size="13">homoglyph mutation, re-executed live: measured recall</text>
+  <text class="title" x="112" y="111" font-size="13">homoglyph mutation, guardrails off, re-executed live: measured recall</text>
   <line class="div" x1="30" y1="122" x2="830" y2="122" stroke-width="1"/>
   <text class="l1" x="48" y="152" font-size="15"><tspan class="acc">&gt; </tspan><tspan class="fg">content keyword rules</tspan></text>
-  <text class="l2 muted" x="48" y="178" font-size="15">  same attacks, unmutated: 10/19 = 0.526</text>
+  <text class="l2 muted" x="48" y="178" font-size="15">  same bases, unmutated: 10/19 = 0.526</text>
   <text class="l3 danger" x="48" y="204" font-size="15">  x mutated: 0/21 = 0.000, every attack slips past</text>
   <text class="l4" x="48" y="242" font-size="15"><tspan class="acc">&gt; </tspan><tspan class="fg">behavior rules</tspan></text>
-  <text class="l5 muted" x="48" y="268" font-size="15">  same attacks, unmutated: 10/19 = 0.526</text>
-  <text class="l6 safe" x="48" y="294" font-size="15">  + mutated: 9/21 = 0.429, still firing on what keywords miss</text>
+  <text class="l5 muted" x="48" y="268" font-size="15">  same bases, unmutated: 10/19 = 0.526</text>
+  <text class="l6 safe" x="48" y="294" font-size="15">  + mutated: 9/21 = 0.429, a small drop, and still misses 12</text>
   <rect class="cur" x="600" y="282" width="9" height="15"/>
 </svg>

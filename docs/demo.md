@@ -38,7 +38,7 @@ runs succeeded, because the model could not act on it.
 
 **4. The honest part (20 seconds).** Stay on the dashboard, at the clean table and per-rule rows.
 
-Say: together the tiers catch 20/28 clean attacks at 1/38 false positives, but on clean or mutated attacks
+Say: together the tiers catch 20/28 clean attacks at 1/38 false positives, but pooled over clean or mutated attacks
 no single rule clears the bar we registered, and holding is not catching: the combined system still drops.
 
 **5. Why to trust it (20 seconds).**

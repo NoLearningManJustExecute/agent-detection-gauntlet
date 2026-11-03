@@ -227,6 +227,63 @@ def test_landing_page_has_both_themes_and_a_motion_fallback() -> None:
         assert token in text
 
 
+def test_percent_inside_a_count_up_tag_is_read() -> None:
+    known = Traceable(frozenset(), frozenset(), frozenset({71}))
+    text = '<b><span data-count="93">93</span> percent</b>\n<b><span>71</span> percent</b>'
+    assert list(untraced_tokens(text, known)) == [(1, "93 percent")]
+
+
+def _evasion_cell(name: str, tier: str) -> dict[str, Any]:
+    evasion = load_results(ROOT / RESULT_FILES[1])
+    section = next(item for item in evasion["sections"] if item["name"] == name)
+    arm = next(item for item in section["arms"] if item["guardrails"] == "off")
+    if tier == "all_tiers":
+        return dict(arm["table"]["all_tiers"]["paired"])
+    return dict(next(c for c in arm["table"]["per_tier"] if c["name"] == tier)["paired"])
+
+
+def _cell_text(cell: dict[str, Any]) -> str:
+    return f"{cell['numerator']}/{cell['denominator']} = {cell['value']:.3f}"
+
+
+def test_landing_figures_are_pinned_to_their_cells() -> None:
+    page = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    banner = (ROOT / "docs/assets/demo-banner.svg").read_text(encoding="utf-8")
+    baseline = load_results(ROOT / RESULT_FILES[0])
+    recall = baseline["pooled"]["all_tiers"]["rates"]["recall"]
+    assert f'data-count="{round(recall["value"] * 100)}"' in page
+    assert f'data-count="{len(baseline["rules"])}"' in page
+    content = _evasion_cell("all_payload_mutations", "content")
+    assert f'data-count="{round(abs(content["delta"]) * 100)}"' in page
+    for tier in ("content", "sequence", "behavior", "all_tiers"):
+        delta = _evasion_cell("all_payload_mutations", tier)["delta"]
+        assert f"--w:{abs(delta) * 100:.1f}%" in page, tier
+    mutated_content = _evasion_cell("homoglyph", "content")["mutated"]
+    mutated_behavior = _evasion_cell("homoglyph", "behavior")["mutated"]
+    all_tiers = _evasion_cell("homoglyph", "all_tiers")
+    for text in (page, banner):
+        assert f"x mutated: {_cell_text(mutated_content)}" in text
+        assert f"+ mutated: {_cell_text(mutated_behavior)}" in text
+    missed = all_tiers["mutated"]["denominator"] - all_tiers["mutated"]["numerator"]
+    assert f"{missed} of {all_tiers['mutated']['denominator']} successful attacks" in page
+    assert f"{all_tiers['delta']:+.3f}" in page
+
+
+def test_readme_opens_with_the_banner_and_one_live_demo_line() -> None:
+    lines = (ROOT / "README.md").read_text(encoding="utf-8").splitlines()
+    assert lines[0].startswith("![") and lines[0].endswith("(docs/assets/demo-banner.svg)")
+    assert lines[1] == ""
+    assert sum(line.startswith("Live demo:") for line in lines) == 1
+
+
+def test_landing_relative_links_exist() -> None:
+    page = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    links = re.findall(r'href="([^"#]+)"', page)
+    relative = [link for link in links if not link.startswith("https://")]
+    assert relative
+    assert all((ROOT / "docs" / link).is_file() for link in relative)
+
+
 def test_diagram_renders_every_stage_and_no_embedded_data() -> None:
     svg = render_diagram(load_diagram(ROOT / DIAGRAM_SOURCE))
     for stage in ("Lab", "Telemetry", "Detection", "Evaluation"):

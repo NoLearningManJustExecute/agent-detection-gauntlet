@@ -35,6 +35,7 @@ PUBLISHED_FILES = (
 FRACTION = re.compile(r"(?<![\w./-])(\d+)/(\d+)(?![\w/])")
 DECIMAL = re.compile(r"(?<![\w.])\d\.\d{3}(?!\d)")
 PERCENT = re.compile(r"(?<![\w.])(\d{1,3}) (?:percent|points)\b")
+TAG = re.compile(r"<[^>]+>")
 NOT_PROSE = re.compile(r"<(style|script)\b.*?</\1>|https?://\S+", re.DOTALL)
 
 
@@ -101,9 +102,10 @@ def untraced_tokens(text: str, known: Traceable) -> Iterable[tuple[int, str]]:
     for match in DECIMAL.finditer(prose):
         if match.group(0) not in known.decimals:
             yield line(match.start()), match.group(0)
-    for match in PERCENT.finditer(prose):
+    # A count-up wraps its number in a tag, so percents read the text with tags removed.
+    for match in PERCENT.finditer(TAG.sub(lambda tag: re.sub(r"[^\n]", "", tag.group(0)), prose)):
         if int(match.group(1)) not in known.percents:
-            yield line(match.start()), match.group(0)
+            yield match.string.count("\n", 0, match.start()) + 1, match.group(0)
 
 
 def check_published(root: Path) -> tuple[list[Path], list[Untraced]]:
