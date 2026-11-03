@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-detection-gauntlet</title>
+<meta name="description" content="Measures which AI-agent detection techniques stay effective when attackers deliberately evade them.">
+<style>
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap");
+:root {
+  --bg: #f5f6fb; --panel: #ffffff; --line: #d9deea; --fg: #18202e; --muted: #556172;
+  --accent: #6d3fe0; --accent-soft: #ece6fd; --danger: #c4314b; --safe: #1a7f45;
+  --term-bg: #161e2b; --term-panel: #1e2735; --term-line: #34414f; --term-fg: #e8eef5;
+  --term-muted: #a9b6c4; --term-acc: #a78bfa; --term-danger: #f7768e; --term-safe: #5ad46a;
+  --track: #e3e6f0;
+  --sans: "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161e2b; --panel: #1e2735; --line: #34414f; --fg: #e8eef5; --muted: #a9b6c4;
+    --accent: #a78bfa; --accent-soft: #2b2645; --danger: #f7768e; --safe: #5ad46a;
+    --term-bg: #10161f; --term-panel: #1e2735; --track: #2a3543;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161e2b; --panel: #1e2735; --line: #34414f; --fg: #e8eef5; --muted: #a9b6c4;
+  --accent: #a78bfa; --accent-soft: #2b2645; --danger: #f7768e; --safe: #5ad46a;
+  --term-bg: #10161f; --term-panel: #1e2735; --track: #2a3543;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 var(--sans); }
+a { color: var(--accent); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); }
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; overflow-wrap: anywhere; }
+.dot { width: 12px; height: 12px; flex: none; border-radius: 50%; background: #8b5cf6; }
+.actions { display: flex; align-items: center; gap: 8px; flex: none; }
+button.theme { font: 13px var(--sans); color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer; }
+.gh { font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.hero { padding: 56px 0 28px; }
+.eyebrow { color: var(--accent); font: 600 13px var(--mono); margin: 0 0 12px; }
+h1 { font-size: clamp(32px, 6vw, 52px); line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em; }
+.lede { font-size: 18px; color: var(--muted); max-width: 720px; margin: 0 0 18px; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 28px; padding: 0; list-style: none; }
+.pills li { font: 12px var(--mono); background: var(--accent-soft); color: var(--fg); padding: 4px 10px; border-radius: 999px; }
+.term { background: var(--term-bg); border: 1px solid var(--term-line); border-radius: 12px; overflow: hidden; }
+.term-top { display: flex; align-items: center; gap: 7px; padding: 10px 14px; border-bottom: 1px solid var(--term-line); background: var(--term-panel); }
+.term-top i { width: 10px; height: 10px; border-radius: 50%; }
+.term-top span { margin-left: 8px; color: var(--term-muted); font: 12px var(--mono); }
+.term pre { margin: 0; padding: 18px; font: 14px/1.9 var(--mono); color: var(--term-fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.term .a { color: var(--term-acc); } .term .m { color: var(--term-muted); }
+.term .d { color: var(--term-danger); font-weight: 600; } .term .s { color: var(--term-safe); font-weight: 600; }
+.ln { display: block; animation: reveal .4s both; }
+.ln:nth-child(1) { animation-delay: .3s; } .ln:nth-child(2) { animation-delay: .9s; }
+.ln:nth-child(3) { animation-delay: 1.6s; } .ln:nth-child(4) { animation-delay: 2.6s; }
+.ln:nth-child(5) { animation-delay: 3.2s; } .ln:nth-child(6) { animation-delay: 3.9s; }
+.ln:nth-child(7) { animation-delay: 4.9s; }
+@keyframes reveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.cursor { display: inline-block; width: 8px; height: 15px; margin-left: 4px; vertical-align: -2px; background: var(--term-acc); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+section { padding: 34px 0; }
+h2 { font-size: 28px; line-height: 1.2; margin: 0 0 10px; letter-spacing: -0.01em; }
+.sub { color: var(--muted); margin: 0 0 20px; max-width: 760px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.headline { font-size: clamp(22px, 3.4vw, 30px); font-weight: 800; line-height: 1.25; margin: 0 0 8px; }
+.tier { display: grid; grid-template-columns: 90px 1fr 76px; gap: 12px; align-items: center; margin: 14px 0 2px; font-weight: 600; }
+.track { height: 16px; background: var(--track); border-radius: 8px; overflow: hidden; }
+.fill { height: 100%; width: var(--w); background: var(--danger); border-radius: 8px; animation: grow 1.2s ease-out both; transform-origin: left; }
+.fill.held { background: var(--safe); }
+@keyframes grow { from { transform: scaleX(0); } to { transform: none; } }
+.val { font: 600 14px var(--mono); text-align: right; }
+.detail { color: var(--muted); font: 12px/1.5 var(--mono); margin: 0 0 10px 102px; overflow-wrap: anywhere; }
+.callout { margin-top: 18px; padding: 14px 16px; border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; }
+.caveat { margin: 16px 0 0; color: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+.stat b { display: block; font-size: 38px; line-height: 1.1; font-weight: 800; color: var(--accent); }
+.stat span { display: block; color: var(--muted); font-size: 14px; margin-top: 6px; }
+.stat code { font: 12px var(--mono); }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; counter-reset: s; }
+.steps li { counter-increment: s; }
+.steps li::before { content: counter(s); display: block; font: 600 13px var(--mono); color: var(--accent); margin-bottom: 6px; }
+.steps b { display: block; margin-bottom: 4px; }
+.steps p { margin: 0; font-size: 14px; color: var(--muted); }
+.badges { display: flex; flex-wrap: wrap; gap: 10px; }
+.badge { font-size: 14px; font-weight: 600; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 8px 12px; }
+.limits { margin: 0; padding-left: 20px; color: var(--muted); }
+.limits li { margin: 4px 0; }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.btn { display: inline-block; padding: 10px 16px; border-radius: 8px; font-weight: 600; text-decoration: none; border: 1px solid var(--accent); color: var(--accent); }
+.btn.primary { background: #6d3fe0; border-color: #6d3fe0; color: #ffffff; }
+footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
+@media (max-width: 560px) {
+  .bar { flex-wrap: wrap; }
+  .tier { grid-template-columns: 70px 1fr 62px; gap: 8px; }
+  .detail { margin-left: 0; }
+  .term pre { font-size: 12.5px; padding: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .ln, .fill, .cursor { animation: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand"><span class="dot"></span>agent-detection-gauntlet</div>
+    <div class="actions">
+      <button class="theme" type="button" id="theme" aria-label="Switch between light and dark">Theme</button>
+      <a class="gh" href="https://github.com/NoLearningManJustExecute/agent-detection-gauntlet">View on GitHub</a>
+    </div>
+  </div>
+</header>
+<main class="wrap">
+  <div class="hero">
+    <p class="eyebrow">AI-agent detection, measured</p>
+    <h1>Behavior survives what blinds keywords.</h1>
+    <p class="lede">14 detection rules, frozen before scoring, run against a live agent's real attacks. Then the same attacks with their characters changed, re-executed to see what still works and what still gets caught.</p>
+    <ul class="pills">
+      <li>14 rules, 3 tiers</li>
+      <li>887 scored live evasion runs</li>
+      <li>llama3.1:8b, temperature 0</li>
+      <li>pre-registered</li>
+    </ul>
+    <div class="term" role="img" aria-label="Under homoglyph mutation, content rules fall from 10/19 to 0/21. Behavior rules go from 10/19 to 9/21.">
+      <div class="term-top"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span>homoglyph mutation, re-executed live: measured recall</span></div>
+      <pre><span class="ln"><span class="a">&gt; </span>content keyword rules</span><span class="ln m">  same attacks, unmutated: 10/19 = 0.526</span><span class="ln d">  x mutated: 0/21 = 0.000, every attack slips past</span><span class="ln"><span class="a">&gt; </span>behavior rules</span><span class="ln m">  same attacks, unmutated: 10/19 = 0.526</span><span class="ln s">  + mutated: 9/21 = 0.429, still firing on what keywords miss</span><span class="ln"><span class="a">&gt; </span>behavior survives what blinds keywords<span class="cursor"></span></span></pre>
+    </div>
+  </div>
+
+  <section>
+    <div class="card">
+      <p class="headline">Homoglyph and zero-width characters blind keyword detection, while sequence and behavior detection hold.</p>
+      <p class="sub" style="margin:0">Hold means no measurable drop, not good recall: behavior still misses most attacks, and the combined system drops under mutation. The numbers below say by how much.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="evasion">
+    <h2 id="evasion">Recall change under payload mutation</h2>
+    <p class="sub">Pooled over mutations, guardrails off, on attacks that still succeeded, against the same attacks unmutated. Brackets are 95% intervals over variant groups.</p>
+    <div class="card">
+      <div class="tier"><span>Content</span><div class="track"><div class="fill" style="--w:39.8%"></div></div><span class="val">-0.398</span></div>
+      <p class="detail">7/57 against 25/48 [-0.604, -0.170]</p>
+      <div class="tier"><span>Sequence</span><div class="track"><div class="fill held" style="--w:0.5%"></div></div><span class="val">-0.005</span></div>
+      <p class="detail">8/57 against 7/48 [-0.060, +0.047]</p>
+      <div class="tier"><span>Behavior</span><div class="track"><div class="fill held" style="--w:4.8%"></div></div><span class="val">-0.048</span></div>
+      <p class="detail">21/57 against 20/48 [-0.092, +0.012]</p>
+      <div class="tier"><span>All tiers</span><div class="track"><div class="fill" style="--w:32.1%"></div></div><span class="val">-0.321</span></div>
+      <p class="detail">28/57 against 39/48 [-0.531, -0.065]</p>
+      <div class="callout"><strong>Base64: the attack broke, it did not evade.</strong> 0/66 runs succeeded in each encoding, because this model could not act on the encoded text. There was no successful attack left to detect, so this is not an attacker win here. A model that can decode could change that.</div>
+      <p class="caveat">Homoglyphs took content recall to 0/21, a change of -0.526. Zero-width characters took it to 1/23, a change of -0.519. Fullwidth characters did not move it, because the rules normalize them away.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="stats">
+    <h2 id="stats">The result in four numbers</h2>
+    <div class="stats">
+      <div class="card stat"><b><span data-count="14">14</span> rules</b><span>Across 3 tiers: content, sequence, behavior. Hashed before any held-out score, and never changed after.</span></div>
+      <div class="card stat"><b><span data-count="71">71</span> percent</b><span>Combined recall on clean held-out attacks: <code>20/28 = 0.714</code>, precision <code>20/21 = 0.952</code>, FPR <code>1/38 = 0.026</code>, over both guardrail arms.</span></div>
+      <div class="card stat"><b><span data-count="40">40</span> points</b><span>Content recall lost under evasion, pooled: <code>-0.398</code>.</span></div>
+      <div class="card stat"><b>Held</b><span>Behavior <code>-0.048</code> and sequence <code>-0.005</code>. Neither interval excludes zero.</span></div>
+    </div>
+    <p class="caveat">Individual rules are weak: on clean or mutated attacks, no single rule clears the registered bar of 0.5 recall, and the best is <code>7/28 = 0.250</code>. The combination is what works.</p>
+  </section>
+
+  <section aria-labelledby="how">
+    <h2 id="how">How it works</h2>
+    <ol class="steps">
+      <li class="card"><b>Attack</b><p>Attack classes and benign work run against an instrumented agent in a sandbox.</p></li>
+      <li class="card"><b>Telemetry</b><p>Every run becomes schema-checked JSONL. Ground truth stays in separate labels.</p></li>
+      <li class="card"><b>Detection</b><p>A deterministic engine runs the rules. It never reads labels.</p></li>
+      <li class="card"><b>Evasion</b><p>Payloads are mutated by fixed code and re-executed against the live model.</p></li>
+      <li class="card"><b>Measure</b><p>Scores come from a frozen held-out split, each with numerator, denominator and interval.</p></li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="limits">
+    <h2 id="limits">What this does not show</h2>
+    <ul class="limits">
+      <li>One local model and one author. Results may not transfer.</li>
+      <li>All 20 succeeded held-out groups have a relative in the dev split, so clean recall may be inflated.</li>
+      <li>3 further attack classes never succeeded against this model, so detecting them is untested.</li>
+      <li>Mutations are mechanical, not an adaptive attacker. Paraphrase and translation evasion were not measured.</li>
+      <li>Converted SIEM rules have not been run on any SIEM.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="frameworks">
+    <h2 id="frameworks">Mapped to</h2>
+    <div class="badges">
+      <span class="badge">OWASP LLM Top 10</span>
+      <span class="badge">OWASP Agentic Top 10</span>
+      <span class="badge">MITRE ATLAS</span>
+      <span class="badge">MITRE ATT&amp;CK</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/NoLearningManJustExecute/agent-detection-gauntlet">View the repository</a>
+      <a class="btn" href="https://github.com/NoLearningManJustExecute/agent-detection-gauntlet/blob/main/docs/findings.md">Read the findings</a>
+      <a class="btn" href="dashboard.html">Open the results dashboard</a>
+    </div>
+    <p class="sub" style="margin:0">Companion projects: <a href="https://github.com/NoLearningManJustExecute/rag-attack-lab">rag-attack-lab</a> attacks, <a href="https://github.com/NoLearningManJustExecute/agent-risk-framework">agent-risk-framework</a> defends, and this one detects.</p>
+  </section>
+</main>
+<footer><div class="wrap">Every rate on this page is in a committed results file, and CI fails on one that is not.</div></footer>
+<script>
+(function () {
+  var root = document.documentElement;
+  var key = "gauntlet-theme";
+  try {
+    var saved = localStorage.getItem(key);
+    if (saved === "light" || saved === "dark") root.setAttribute("data-theme", saved);
+  } catch (e) {}
+  document.getElementById("theme").addEventListener("click", function () {
+    var current = root.getAttribute("data-theme");
+    if (!current) current = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    var next = current === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem(key, next); } catch (e) {}
+  });
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  document.querySelectorAll("[data-count]").forEach(function (node) {
+    var target = Number(node.getAttribute("data-count"));
+    var start = performance.now();
+    function tick(now) {
+      var done = Math.min(1, (now - start) / 1200);
+      node.textContent = String(Math.round(target * done));
+      if (done < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
+})();
+</script>
+</body>
+</html>
