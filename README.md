@@ -77,19 +77,31 @@ denominator, undefined rates are null, and CI re-scores the golden results and f
 
 The full list is in [docs/limitations.md](docs/limitations.md).
 
-## Reproduce
+## Reproducibility
 
-Requires Python 3.12 or later.
+The thesis is byte-exact re-scoring, so the toolchain is pinned, not ranged:
+
+- **Python:** 3.12.15 in CI on `ubuntu-latest`. The checks below also pass on 3.12.10 on Windows, except
+  the two held-out re-scores, which I only run in CI.
+- **Packages:** `requirements-lock.txt` holds every package, direct and transitive, at one exact version
+  with sha256 hashes. `pyproject.toml` pins the direct ones to the same versions and the build backend to
+  `setuptools==84.2.1` (exact version, not hash-checked).
+- **Model:** `llama3.1:8b`, digest
+  `46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e`, at temperature 0. Only producing new
+  traces needs it. Traces are committed, so scoring needs no model.
 
 ```sh
 python3.12 -m venv .venv
-# Windows: .venv\Scripts\activate
+# Windows: .venv\Scriptsctivate
 . .venv/bin/activate
-pip install -e ".[dev]"
+python -m pip install --require-hashes -r requirements-lock.txt
+python -m pip install --no-deps -e .
 ```
 
 Check the rules, the registrations and every generated document against what is committed. None of this
-reads a held-out trace or changes a file:
+reads a held-out trace or changes a file. Each command exits 0 and ends with a line starting `ok:`;
+`validate-rules` reports `ok: 14 rule(s), 5 warning(s)`, where the warnings are the one unverified ATLAS
+ID ([mappings.md](docs/mappings.md)):
 
 ```sh
 gauntlet validate-rules rules
@@ -99,18 +111,29 @@ gauntlet publish build --check
 gauntlet publish numbers
 ```
 
-Re-score the held-out traces and compare with the golden files. This is the only step that reads them.
-Each run appends a row to `docs/heldout-log.md`, as every held-out read does. In PowerShell, set
-`$env:GAUNTLET_SCORING_HELDOUT = "1"` first:
+Re-score the held-out traces and compare with the golden files, byte for byte. This is the only step that
+reads them. Each run appends a row to `docs/heldout-log.md`, as every held-out read does. In PowerShell,
+set `$env:GAUNTLET_SCORING_HELDOUT = "1"` first:
 
 ```sh
 GAUNTLET_SCORING_HELDOUT=1 gauntlet validation score --check
 GAUNTLET_SCORING_HELDOUT=1 gauntlet evasion score --check
 ```
 
-Traces are committed, so scoring needs no model. Producing new traces needs the source lab,
+A difference in either file exits non-zero. The CI `regression` job runs both on every push and pull
+request, on a clean checkout installed from the lockfile. The golden files should hash to:
+
+| File | sha256 |
+|---|---|
+| `results/baseline/metrics.json` | `50cc3ef8a9b87f13e09f2c64cd52b7825e3b642ac0db8987d6e374d76dfaa3f4` |
+| `results/evasion/evasion.json` | `b7219ce8e0433477d23a4fac3c4e74129ed814ab71568dd18f74ed37f263f8b7` |
+
+Producing new traces needs the source lab,
 [agent-risk-framework](https://github.com/NoLearningManJustExecute/agent-risk-framework), and a local
 Ollama, which this repository does not include.
+
+To change a pin, edit `pyproject.toml` and re-run the command in the lockfile's header with `uv` installed.
+A pin that moves a golden file fails `regression`.
 
 ## Repository layout
 
