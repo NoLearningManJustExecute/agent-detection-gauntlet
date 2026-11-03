@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 
 from tools import leak_guard
 from tools.leak_guard import (
@@ -698,7 +697,23 @@ def test_pr_scan(
     assert sum("/issues/7/comments" in url for url in calls) == 2
 
 
-def test_pr_scan_without_the_list_runs_generic_rules_only(
+def _pr_text_workflow() -> str:
+    workflow = Path(__file__).resolve().parent.parent / ".github/workflows/pr-text.yml"
+    return workflow.read_text(encoding="utf-8")
+
+
+def _placeholder_list(workflow: str) -> str:
+    lines = workflow.split("generic rules only (everyone else)")[1].splitlines()
+    start = lines.index("          LEAK_DENYLIST: |") + 1
+    block = []
+    for line in lines[start:]:
+        if not line.startswith(" " * 12):
+            break
+        block.append(line.strip())
+    return "\n".join(block) + "\n"
+
+
+def test_pr_scan_with_the_placeholder_prints_rule_and_location_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     def fake_get(url: str, token: str) -> Any:
@@ -710,7 +725,8 @@ def test_pr_scan_without_the_list_runs_generic_rules_only(
 
     monkeypatch.setattr(leak_guard, "http_get_json", fake_get)
     env = {
-        "CI": "false",
+        "CI": "true",
+        "LEAK_DENYLIST": _placeholder_list(_pr_text_workflow()),
         "GITHUB_TOKEN": "t0ken",
         "GITHUB_REPOSITORY": "owner/repo",
         "GITHUB_EVENT_PATH": event_file(tmp_path, {"pull_request": {"number": 7}}),
@@ -719,23 +735,26 @@ def test_pr_scan_without_the_list_runs_generic_rules_only(
     assert code == 1
     assert "pr body:1: email-address" in output
     assert "dash-character" in output
-    assert "denylist: private identifier" not in output
-    assert "hash #" not in output
-    assert "no denylist" in output
+    assert "denylist 1 entries from LEAK_DENYLIST" in output
+    for leaked in ("hash #", "private identifier", "****", "gmail", SECRET_WORD):
+        assert leaked not in output
 
 
 def test_pr_text_workflow_gives_the_private_list_only_to_the_owner() -> None:
-    workflow = Path(__file__).resolve().parent.parent / ".github/workflows/pr-text.yml"
-    text = workflow.read_text(encoding="utf-8")
-    assert text.count("secrets.") == 1
-    steps = yaml.safe_load(text)["jobs"]["pr-text"]["steps"]
-    owner, others = [step for step in steps if step.get("run") == "python tools/leak_guard.py --pr"]
-    assert owner["if"] == "github.event.sender.login == 'NoLearningManJustExecute'"
-    assert owner["env"]["LEAK_DENYLIST"] == "${{ secrets.LEAK_DENYLIST }}"
-    assert "CI" not in owner["env"]
-    assert others["if"] == "github.event.sender.login != 'NoLearningManJustExecute'"
-    assert "LEAK_DENYLIST" not in others["env"]
-    assert others["env"]["CI"] == "false"
+    text = _pr_text_workflow()
+    assert text.count("secrets") == 1
+    assert len(re.findall(r"run: python tools/leak_guard\.py --pr$", text, re.MULTILINE)) == 2
+    # Step level only: a workflow or job env would reach both steps.
+    assert re.findall(r"^( *)env:", text, re.MULTILINE) == [" " * 8, " " * 8]
+    assert "ref: ${{ github.event.repository.default_branch }}" in text
+    assert "CI:" not in text
+    owner, others = text.split("generic rules only (everyone else)")
+    sender = r"^ +if: github\.event\.sender\.login {} 'NoLearningManJustExecute'$"
+    assert re.search(sender.format("=="), owner, re.MULTILINE)
+    assert "LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}" in owner
+    assert re.search(sender.format("!="), others, re.MULTILINE)
+    placeholder = Denylist.parse(_placeholder_list(text))
+    assert list(placeholder.entries) == ["0" * 64]
 
 
 def test_pr_scan_setup_errors(
