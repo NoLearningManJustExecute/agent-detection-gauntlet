@@ -306,6 +306,7 @@ def test_ci_gives_the_private_list_only_to_the_job_that_runs_no_change_code() ->
         assert name == "leak-guard"
         assert "$LEAK_GUARD" in step["run"]
         assert "tools/leak_guard.py" not in step["run"]
+        assert "github.event.sender.login == 'NoLearningManJustExecute'" in step["if"]
     assert "env" not in workflow
     assert all("env" not in job for job in workflow["jobs"].values())
 
