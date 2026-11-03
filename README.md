@@ -1,6 +1,10 @@
+![agent-detection-gauntlet: under homoglyph mutation, content rules fall to 0/21 while behavior rules still catch 9/21](docs/assets/demo-banner.svg)
+
 # agent-detection-gauntlet
 
 Measures which AI-agent detection techniques stay effective when attackers deliberately evade them.
+
+Live demo: https://NoLearningManJustExecute.github.io/agent-detection-gauntlet/
 
 > Which AI-agent detection techniques remain effective when attackers intentionally evade them?
 

@@ -46,7 +46,7 @@ def test_generated_documents_are_current() -> None:
 def test_every_published_rate_is_in_a_results_json() -> None:
     scanned, problems = check_published(ROOT)
     assert [problem.render() for problem in problems] == []
-    assert {ROOT / path for path in PUBLISHED_FILES if path.suffix == ".md"} <= set(scanned)
+    assert {ROOT / path for path in PUBLISHED_FILES} == set(scanned)
 
 
 @pytest.mark.parametrize("token", ["7/57", "25/48", "20/28", "1/38", "0/66", "23/46"])
@@ -197,6 +197,34 @@ def test_catalog_results_agree_on_what_is_verified() -> None:
     coverage = json.loads((ROOT / RESULT_FILES[2]).read_text(encoding="utf-8"))
     flags = {item["id"]: item["verified"] for item in coverage["techniques"]}
     assert [name for name, verified in flags.items() if not verified] == ["AML.T0057"]
+
+
+@pytest.mark.parametrize("name", ["docs/assets/demo-banner.svg", "docs/assets/architecture.svg"])
+def test_images_carry_no_provenance_or_embedded_data(name: str) -> None:
+    text = (ROOT / name).read_text(encoding="utf-8").lower()
+    for bad in ("c2pa", "claude", "anthropic", "<metadata", "base64", "<image"):
+        assert bad not in text
+
+
+def test_landing_page_external_references_are_only_fonts_and_own_repos() -> None:
+    text = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    assert text.index("<style>") < text.index("@import")
+    assert text[text.index("<style>") + len("<style>") :].lstrip().startswith("@import")
+    urls = set(re.findall(r"https?://[^\s\"')]+", text))
+    own = "https://github.com/NoLearningManJustExecute/"
+    fonts = "https://fonts.googleapis.com/"
+    assert urls
+    assert all(url.startswith((own, fonts)) for url in urls), urls
+
+
+def test_landing_page_has_both_themes_and_a_motion_fallback() -> None:
+    text = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    for token in (
+        "prefers-color-scheme: dark",
+        ':root[data-theme="dark"]',
+        "prefers-reduced-motion: reduce",
+    ):
+        assert token in text
 
 
 def test_diagram_renders_every_stage_and_no_embedded_data() -> None:

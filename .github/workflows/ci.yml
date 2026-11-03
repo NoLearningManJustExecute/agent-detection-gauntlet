@@ -438,7 +438,7 @@ jobs:
           LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
         run: |
           python tools/leak_guard.py --text docs/dashboard.html --text docs/mappings.md \
-            --text docs/assets/architecture.svg --text docs/assets/architecture.yaml
+            --text docs/assets/architecture.svg --text docs/assets/architecture.yaml             --text docs/index.html --text docs/assets/demo-banner.svg --text README.md
 
   # dist/ is a build output: built here to prove it builds and is clean, never committed.
   engineering:
