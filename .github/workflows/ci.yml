@@ -84,6 +84,15 @@ jobs:
           else
             echo "::warning::leak guard configuration, workflows or hooks changed: review every change; baseline and allowlist changes apply only after they reach the base branch"
           fi
+      # pr-text.yml runs other people's comments this way. A comment event only runs from the
+      # default branch, so this is where a change can show the path still works on a runner.
+      - name: The generic-only path runs without the private list
+        env:
+          CI: "false"
+        run: |
+          output=$(python tools/leak_guard.py --root . --text README.md 2>&1)
+          echo "$output" | tail -n 1
+          echo "$output" | grep -q "no denylist"
       - name: Scan pull request text
         if: github.event_name == 'pull_request'
         env:
