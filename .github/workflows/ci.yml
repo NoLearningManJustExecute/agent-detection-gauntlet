@@ -536,8 +536,7 @@ jobs:
         run: |
           python -m pip install --require-hashes -r requirements-lock.txt
           python -m pip install --no-deps -e .
-      # The pins in pyproject.toml and the lockfile must agree, or this fails.
-      - name: Installed set matches pyproject.toml
+      - name: Installed set has no broken requirements
         run: python -m pip check
       - name: pip-audit
         run: pip-audit --skip-editable

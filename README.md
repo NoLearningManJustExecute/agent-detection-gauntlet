@@ -81,11 +81,11 @@ The full list is in [docs/limitations.md](docs/limitations.md).
 
 The thesis is byte-exact re-scoring, so the toolchain is pinned, not ranged:
 
-- **Python:** 3.12.15 in CI on `ubuntu-latest`. The checks below also pass on 3.12.10 on Windows, except
+- **Python:** 3.12.15 in the CI jobs that install packages, on `ubuntu-latest`. The checks below also pass on 3.12.10 on Windows, except
   the two held-out re-scores, which I only run in CI.
 - **Packages:** `requirements-lock.txt` holds every package, direct and transitive, at one exact version
   with sha256 hashes. `pyproject.toml` pins the direct ones to the same versions and the build backend to
-  `setuptools==84.2.1` (exact version, not hash-checked).
+  `setuptools==84.2.1` (exact version, not hash-checked). A test fails if the two disagree.
 - **Model:** `llama3.1:8b`, digest
   `46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e`, at temperature 0. Only producing new
   traces needs it. Traces are committed, so scoring needs no model.
