@@ -1,6 +1,10 @@
+![agent-detection-gauntlet: under homoglyph mutation, content rules fall to 0/21 while behavior rules still catch 9/21](docs/assets/demo-banner.svg)
+
 # agent-detection-gauntlet
 
 Measures which AI-agent detection techniques stay effective when attackers deliberately evade them.
+
+Live demo: https://NoLearningManJustExecute.github.io/agent-detection-gauntlet/
 
 > Which AI-agent detection techniques remain effective when attackers intentionally evade them?
 
@@ -26,8 +30,8 @@ Pooled over payload mutations, guardrails off. Recall is over attacks that still
 - **Together, on clean held-out attacks,** all tiers catch 20/28 = 0.714 [0.529, 0.847] of successful
   attacks, with a false positive rate of 1/38 = 0.026 [0.005, 0.135] over both guardrail arms. That is a
   different population from the 39/48 above, whose attacks were chosen because they succeeded.
-- **Individual rules are weak.** On clean or mutated attacks, no single rule clears the registered bar
-  of 0.5 recall; the best is 7/28 = 0.250. The strength is in the combination, and the combination still
+- **Individual rules are weak.** Pooled over clean or mutated attacks, no single rule clears the
+  registered bar of 0.5 recall at 0.05 FPR; the best is 7/28 = 0.250. The strength is in the combination, and the combination still
   drops under mutation.
 
 14 rules, 887 scored live evasion runs, one local model. Read the [findings](docs/findings.md) and the
