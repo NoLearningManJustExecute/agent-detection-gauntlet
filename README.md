@@ -92,7 +92,7 @@ The thesis is byte-exact re-scoring, so the toolchain is pinned, not ranged:
 
 ```sh
 python3.12 -m venv .venv
-# Windows: .venv\Scriptsctivate
+# Windows: .venv\Scripts\activate
 . .venv/bin/activate
 python -m pip install --require-hashes -r requirements-lock.txt
 python -m pip install --no-deps -e .
