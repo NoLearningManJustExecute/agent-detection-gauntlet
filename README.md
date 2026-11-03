@@ -45,9 +45,8 @@ Pooled over payload mutations, guardrails off. Recall is over attacks that still
 
 ## Why it matters
 
-Teams are starting to write detections for AI agents, and those detections usually get judged on clean
-attacks. That says nothing about what a rule is worth once an attacker changes a few characters. The
-attack keeps working and the alert goes away: under homoglyphs the attack still succeeded in 54/66 runs,
+A detection's score on clean attacks says nothing about what it is worth once an attacker changes a few
+characters. Here the attack keeps working and the alert goes away: under homoglyphs the attack still succeeded in 54/66 runs,
 and the content tier caught 0/21 of them.
 
 The same measurement says where to spend effort. Behavior and sequence rules did not measurably drop,
@@ -156,20 +155,20 @@ A pin that moves a golden file fails `regression`.
 ## Lessons learned
 
 - **Check the attack survived before calling it an evasion.** In an offline check, bare base64 took content
-  rules from 12/23 to 2/23, which looks like a strong evasion. Run live, it succeeded in 0/66 runs, because
-  this model could not act on it. Scoring mutated text without re-running the attack would have reported
+  rules from 12/23 to 2/23, which looks like a strong evasion. Run live, it succeeded in 0/66 runs, which I
+  read as this model not acting on the encoded text. Scoring mutated text without re-running the attack would have reported
   the wrong finding.
 - **Re-run the mutation. Do not edit the trace.** Editing captured text leaves the tool sequence as it was, so
   behavior rules would hold by construction. Re-running is slower, and it is why that result means anything.
-- **One normalization step decided a whole result.** NFKC folds fullwidth characters and does not fold lookalikes
-  or remove zero-width marks. I only saw how much that mattered by measuring it, and the frozen rules mean
-  the likely fix for zero-width stays untested here.
-- **Pre-registration costs you the comfortable answer.** No single rule cleared the bar I set, and the best was
-  7/28. I kept the bar. The combined figures describe the system better, but they sit next to that result, not
+- **One normalization step looks like the explanation for a whole result.** NFKC folds fullwidth characters and does
+  not fold lookalikes or remove zero-width marks, and only fullwidth left content recall unchanged. Nothing toggled
+  NFKC, so that is a reading, not a measurement, and the frozen rules mean the likely fix for zero-width stays untested.
+- **Pre-registration costs you the comfortable answer.** Pooled over clean or mutated attacks, no single rule cleared
+  the bar I set, and the best was 7/28. I kept the bar. The combined figures describe the system better, but they sit next to that result, not
   in place of it.
-- **A group split is not independence.** I split whole variant groups and thought that was enough. Afterwards,
-  20 of 20 succeeded held-out groups turned out to have a relative in dev, and no clean subset is left to test on.
-  Next time I would split by mechanism and write held-out attacks separately.
+- **A group split is not independence.** I split whole variant groups, and flagged before scoring that relatives
+  crossed the split. I still underestimated it: 20 of 20 succeeded held-out groups have a relative in dev, so no clean
+  subset is left to test on. Next time I would split by mechanism and write held-out attacks separately.
 - **Combining beat any one rule.** Content and behavior tied at 12/28 and caught mostly different attacks, which is
   how all tiers reached 20/28. Removing a cheap tier takes real weight with it, which is the evasion result.
 - **Audit the scorer as hard as the rules.** A pre-merge audit found the scorer removing more than one registered

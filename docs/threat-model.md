@@ -30,7 +30,7 @@ reserved domains ([dataset.md](dataset.md)).
 | B2 | Files to the parsers and engine | Rules, traces, labels and detections are read from disk and parsed strictly. They are treated as trusted local input ([SECURITY.md](https://github.com/NoLearningManJustExecute/agent-detection-gauntlet/blob/main/SECURITY.md)). |
 | B3 | Dev split to held-out split | A command-line firewall and an access log. It is a discipline aid, not an access control. |
 | B4 | Detections to labels | The engine never reads labels. Only the metrics stage joins them ([methodology.md](methodology.md)). |
-| B5 | A change to CI | Pull request code runs in CI. Only the `leak-guard` job can hold the private list, and it runs no code from the change. |
+| B5 | A change to CI | Pull request code runs in CI. Within `ci.yml`, only the `leak-guard` job can hold the private list, and it runs no code from the change. Three other workflows also hold it (C10, R8). |
 | B6 | Local machine to GitHub | Git hooks and the leak guard, then the same guard in CI. |
 | B7 | Package registries and Action publishers to CI | Hash-pinned lockfile and SHA-pinned Actions. |
 | B8 | This repository to its readers | Generated reports, the dashboard, and rule exports. Nothing here controls what a reader does next. |
@@ -70,12 +70,12 @@ reserved domains ([dataset.md](dataset.md)).
 | AC-3 | T1, T3 | Change a golden number or a figure in a document | C4, C5 | Both run in CI and report after the fact. Nothing requires them to pass before `main` moves (R1). |
 | AC-4 | T1, T5 | Edit or swap traces | C2, C6 | A trace that was false when recorded passes every check (R3). |
 | AC-5 | T2 | Evade the published rules | None. Measuring this is the project. | Adaptive attackers are not measured ([limitations.md](limitations.md)). |
-| AC-6 | T5 | A rule regex that backtracks forever | Safe loader and strict validation, C7. No timeout. | Accepted (X1). |
-| AC-7 | T5 | A trace that is huge or built to slow a regex | C7, C8. The reader has no size limit. | Accepted (X1). |
+| AC-6 | T5 | A rule regex that backtracks forever | Nothing limits this. C7 stops unsafe YAML and bad structure, and regexes have no timeout. | Accepted (X1). |
+| AC-7 | T5 | A trace that is huge or built to slow a regex | Nothing limits this. C8 rejects malformed input, and sets no size or time limit. | Accepted (X1). |
 | AC-8 | T5, T7 | Attack text in a trace reaches a model or a person who acts on it | Traces are data to the engine and are never executed. [SECURITY.md](https://github.com/NoLearningManJustExecute/agent-detection-gauntlet/blob/main/SECURITY.md) warns about them. | A person or an AI assistant reading `datasets/` is exposed to working prompt injection text. Accepted (X2). |
 | AC-9 | T3 | Read `LEAK_DENYLIST` from a pull request | C9, C10 | Workflow files are read from the change, so someone with write access could alter the gate. Only the owner has it. |
 | AC-10 | T3 | Post a comment that makes the guard misbehave | C10 | Scanning stays on generic rules for non-owners and prints no fragment of a match. See X3 for the owner's own runs. |
-| AC-11 | T4 | Find an identifier in a commit, report or path | C11, C12, C13 | Images and PDFs get a manual review prompt, not a content scan (R4). |
+| AC-11 | T4 | Find an identifier in a commit, report or path | C11, C12, C13 | The guard scans metadata and readable text in images and PDFs, not pixels, and lists them for manual review (R4). Hooks can be skipped locally, CI reports after a push, and a non-owner pull request meets the private list only at merge (R9). |
 | AC-12 | T4 | Confirm a guessed identifier from a failed run | C10 | Accepted (X3). |
 | AC-13 | T6 | Ship a malicious update of a dependency or Action | C14, C15 | A lockfile trusts what it saw when it was written (R5). |
 | AC-14 | T7 | Load an export into a SIEM and trust it | Exports are labeled "converted, not live SIEM validated", and unconverted rules are listed with reasons ([export.md](export.md)). | No backend has run them. A reader can ignore a label (X4). |
@@ -88,16 +88,16 @@ Each one is in the repository today, or is a GitHub setting where noted.
 
 | ID | Control | Where | Abuse cases |
 |---|---|---|---|
-| C1 | Rule hashes are registered before scoring, and scoring refuses rules that differ | `docs/preregistration.json`, `docs/preregistration-evasion.json`, `gauntlet validation verify` | AC-1 |
+| C1 | Rule hashes are registered before scoring. `gauntlet validation verify` ties committed results to the frozen registration, and `validation score` refuses rules that differ. `scan`, `metrics` and `validation score --prereg` do not ask for that registration, and CI's verify step is what catches their use in committed results | `docs/preregistration.json`, `docs/preregistration-evasion.json`, `src/agent_detection_gauntlet/validation/prereg.py`, [methodology.md](methodology.md) | AC-1 |
 | C2 | Registrations and the split manifest must equal their first committed copy, and results may not be deleted | `regression` and `corpus` jobs in `.github/workflows/ci.yml` | AC-1, AC-4 |
-| C3 | Commands refuse held-out input unless the read is declared, and log it first. Log rows on the base must stay, in order | `src/agent_detection_gauntlet/firewall.py`, `docs/heldout-log.md`, `regression` job | AC-2 |
-| C4 | A fresh score must match the golden files byte for byte | `gauntlet validation score --check`, `gauntlet evasion score --check` | AC-3 |
-| C5 | Every published rate must exist in a results JSON, and no doc may claim support the JSON lacks | `gauntlet publish numbers`, `gauntlet coverage claims` | AC-3, AC-15 |
+| C3 | Scoring commands refuse held-out input unless the read is declared, and log it first. Integrity tooling (`validate-traces`, `corpus verify`, `corpus card`) reads the split unlogged, by design. Log rows on the base must stay, in order | `src/agent_detection_gauntlet/firewall.py`, `docs/heldout-log.md`, `regression` job | AC-2 |
+| C4 | A fresh score must match the golden files byte for byte. If the rule files no longer match those the baseline golden file records, `validation score --check` prints `skipped` and exits 0, and `validation verify` then fails if that golden file changed | `gauntlet validation score --check`, `gauntlet evasion score --check` | AC-3 |
+| C5 | Every fraction and three-decimal rate in the six published files must exist somewhere in a results JSON, and a doc that names a technique near the word "covered" must match the JSON. This catches invented numbers, not a real number attached to the wrong claim | `gauntlet publish numbers`, `gauntlet coverage claims` | AC-3, AC-15 |
 | C6 | Results record the hashes of the inputs they were scored from | `results/baseline/metrics.json`, `results/evasion/evasion.json` | AC-4 |
-| C7 | Rule YAML uses a safe loader that rejects duplicate keys, then strict validation | `src/agent_detection_gauntlet/rules/loader.py` | AC-6, AC-7 |
-| C8 | Trace, label and detection readers fail closed on malformed input and unknown `adg.*` attributes | `src/agent_detection_gauntlet/io/jsonl.py`, `src/agent_detection_gauntlet/schema/` | AC-7 |
-| C9 | Only the `leak-guard` job holds the private list, and a test enforces it. It installs nothing and runs the base branch's guard | `.github/workflows/ci.yml`, `tests/test_publish.py` | AC-9 |
-| C10 | The private list runs only when the owner triggered the event. Everyone else gets a placeholder list and generic rules | `.github/workflows/ci.yml`, `.github/workflows/pr-text.yml` | AC-9, AC-10, AC-12 |
+| C7 | Rule YAML uses a safe loader that rejects duplicate keys, then strict validation | `src/agent_detection_gauntlet/rules/loader.py` | AC-6 (structure only) |
+| C8 | Trace, label and detection readers fail closed on malformed input and unknown `adg.*` attributes | `src/agent_detection_gauntlet/io/jsonl.py`, `src/agent_detection_gauntlet/schema/` | AC-4, AC-7 (structure only) |
+| C9 | Within `ci.yml`, only the `leak-guard` job holds the private list, and a test enforces it. It installs nothing and runs the base branch's guard | `.github/workflows/ci.yml`, `tests/test_publish.py` | AC-9 |
+| C10 | In pull request and comment scans, the private list runs only when the owner triggered the event. Everyone else gets a placeholder list and generic rules. The scheduled full scan and the release workflow, which run from a branch rather than for a pull request, also use the list | `.github/workflows/ci.yml`, `.github/workflows/pr-text.yml`, `leak-guard-full.yml`, `release.yml` | AC-9, AC-10, AC-12 |
 | C11 | The leak guard blocks personal data, local paths, non-allowlisted emails and secret shapes in the tree, history and pull request text. The private list is salted hashes, kept out of the repository | `tools/leak_guard.py`, `tools/LEAK_GUARD.md`, `.githooks/`, `leak-guard-full.yml` | AC-11 |
 | C12 | Paths in outputs are repository-relative, and a path outside the repository fails closed | `src/agent_detection_gauntlet/paths.py`, [metrics.md](metrics.md#paths-in-reports-and-logs) | AC-11 |
 | C13 | Generated outputs are scanned with generic rules in the jobs that produce them | `pipeline`, `regression`, `coverage`, `dashboard-drift`, `engineering` jobs | AC-11 |
@@ -122,11 +122,12 @@ These are real and not closed. They are not accepted as fine, only stated.
   than blocking it. "Never force push" and "merge only green" are my process, not something GitHub enforces.
   Commits are not signed.
 - **R2. The firewall is self-policed.** It catches accidents and leaves a trail for honest use. It cannot stop or
-  detect an author who reads a held-out file directly, or who drops a log row before committing it.
+  detect an author who reads a held-out file directly. CI cannot see a log row lost before it was committed, and that
+  has happened: record 4 in [heldout-log.md](heldout-log.md) is three rows lost to a mistake.
 - **R3. Trace provenance is trust on first sight.** Hashes prove traces did not change after they were pinned. They
   say nothing about whether a run happened as recorded.
-- **R4. Text scanning cannot see pixels.** A username in a screenshot or a recording passes the guard. Images and PDFs
-  need a person to look at them, every time.
+- **R4. Text scanning cannot see pixels.** The guard reads image metadata and readable text, but a username drawn in a
+  screenshot or a recording passes it. Images and PDFs need a person to look at them, every time.
 - **R5. Supply chain.** The lockfile pins what existed when it was written. A package that was already malicious then
   stays pinned. `pip-audit` knows only reported issues. `setuptools` is an exact pin but is not hash-checked,
   and `ubuntu-latest` still floats.
@@ -134,6 +135,11 @@ These are real and not closed. They are not accepted as fine, only stated.
   stays out of the repository and in a CI secret for that reason.
 - **R7. Single author.** One person wrote attacks, rules and scoring. Audits by separate sessions help, and they are not
   independent replication.
+- **R8. `release.yml` holds the private list after running the dispatched ref's code.** It installs the package and runs
+  tests before its guard steps. Only someone with write access can dispatch it, so dispatch it only from a trusted ref.
+- **R9. The leak guard is not a pre-push wall.** Hooks can be skipped, and only a local setup runs them. CI sees a commit
+  once it is on GitHub. A Dependabot or fork pull request is checked against the private list only on the push when it
+  merges, by which point a hit is already public.
 
 ## Accepted risk
 
