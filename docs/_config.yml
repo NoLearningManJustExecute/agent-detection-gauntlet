@@ -1,0 +1,4 @@
+# GitHub Pages renders these docs with kramdown. By default it turns a double hyphen into an en
+# dash, which garbles command flags such as --check in the held-out log tables.
+kramdown:
+  typographic_symbols: {ndash: "--", mdash: "---"}

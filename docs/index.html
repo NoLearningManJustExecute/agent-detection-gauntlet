@@ -38,7 +38,7 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 var(--
 a { color: var(--accent); }
 .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
 header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); }
-.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; overflow-wrap: anywhere; }
 .dot { width: 12px; height: 12px; flex: none; border-radius: 50%; background: #8b5cf6; }
 .actions { display: flex; align-items: center; gap: 8px; flex: none; }
@@ -98,7 +98,7 @@ h2 { font-size: 28px; line-height: 1.2; margin: 0 0 10px; letter-spacing: -0.01e
 footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
 @media (max-width: 560px) {
   .bar { flex-wrap: wrap; }
-  .tier { grid-template-columns: 70px 1fr 62px; gap: 8px; }
+  .tier { grid-template-columns: 82px 1fr 62px; gap: 8px; }
   .detail { margin-left: 0; }
   .term pre { font-size: 12.5px; padding: 14px; }
 }
@@ -144,7 +144,7 @@ footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
 
   <section aria-labelledby="evasion">
     <h2 id="evasion">Recall change under payload mutation</h2>
-    <p class="sub">Pooled over mutations, guardrails off, on attacks that still succeeded (138/396 runs), against the same base scenarios unmutated. Brackets are 95% intervals over variant groups.</p>
+    <p class="sub">Pooled over mutations, guardrails off, on attacks that still succeeded (138/396 runs, or 57 distinct traces in 17 groups), against the same base scenarios unmutated. Brackets are 95% intervals over variant groups.</p>
     <div class="card">
       <div class="tier"><span>Content</span><div class="track"><div class="fill" style="--w:39.8%"></div></div><span class="val">-0.398</span></div>
       <p class="detail">7/57 against 25/48 [-0.604, -0.170]</p>
@@ -200,7 +200,7 @@ footer { padding: 14px 0 44px; color: var(--muted); font-size: 14px; }
   <section aria-labelledby="frameworks">
     <h2 id="frameworks">Mapped to</h2>
     <div class="badges">
-      <span class="badge">OWASP LLM Top 10</span>
+      <span class="badge">OWASP LLM Top 10 (2025 numbering)</span>
       <span class="badge">OWASP Agentic Top 10</span>
       <span class="badge">MITRE ATLAS</span>
       <span class="badge">MITRE ATT&amp;CK</span>

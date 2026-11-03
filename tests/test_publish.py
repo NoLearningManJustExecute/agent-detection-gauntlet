@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from agent_detection_gauntlet.catalog import Catalog, CatalogEntry, load_catalog
 from agent_detection_gauntlet.cli import main
@@ -132,7 +133,8 @@ def test_build_command_writes_then_passes_check(
 def test_dashboard_is_self_contained_and_holds_the_headline() -> None:
     html = (ROOT / DASHBOARD).read_text(encoding="utf-8")
     assert "<script" not in html
-    assert not re.search(r"""(?:src|href)\s*=|@import|url\(|https?://""", html)
+    assert not re.search(r"""src\s*=|@import|url\(|https?://""", html)
+    assert re.findall(r"""href\s*=\s*['"]([^'"]*)""", html) == ["index.html"]
     for token in ("7/57", "25/48", "-0.398", "20/28 = 0.714", "1/38 = 0.026", "0/66"):
         assert token in html, token
     assert not re.search(r"[A-Za-z]:\\|/home/|/Users/", html)
@@ -282,6 +284,23 @@ def test_landing_relative_links_exist() -> None:
     relative = [link for link in links if not link.startswith("https://")]
     assert relative
     assert all((ROOT / "docs" / link).is_file() for link in relative)
+
+
+def test_ci_gives_the_private_list_only_to_the_job_that_runs_no_change_code() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    holders = [
+        (name, step)
+        for name, job in workflow["jobs"].items()
+        for step in job["steps"]
+        if "secrets." in str(step.get("env", {}))
+    ]
+    assert holders
+    for name, step in holders:
+        assert name == "leak-guard"
+        assert "$LEAK_GUARD" in step["run"]
+        assert "tools/leak_guard.py" not in step["run"]
+    assert "env" not in workflow
+    assert all("env" not in job for job in workflow["jobs"].values())
 
 
 def test_diagram_renders_every_stage_and_no_embedded_data() -> None:

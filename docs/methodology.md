@@ -1,7 +1,7 @@
 # Methodology
 
 This document states the measurement principles the project follows. They exist so that a
-reported number means what it appears to mean. The roadmap in [ROADMAP.md](../ROADMAP.md) lists
+reported number means what it appears to mean. The roadmap in [ROADMAP.md](https://github.com/NoLearningManJustExecute/agent-detection-gauntlet/blob/main/ROADMAP.md) lists
 them as commitments for every phase.
 
 ## Ground truth is separate from evidence

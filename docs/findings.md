@@ -6,11 +6,11 @@ hold.**
 14 frozen rules were scored on held-out traces of a live agent, then on the same attacks with their
 payloads mutated and re-executed. Rules were hashed and pre-registered before any held-out score
 existed, and none changed afterward. Every rate below is in a committed results JSON, and CI fails on a
-fraction or three-decimal rate that no JSON holds: [baseline](../results/baseline/metrics.json),
-[evasion](../results/evasion/evasion.json),
-[per-technique](../results/coverage/coverage.json). The tables are in
+fraction or three-decimal rate that no JSON holds: [baseline](https://github.com/NoLearningManJustExecute/agent-detection-gauntlet/blob/main/results/baseline/metrics.json),
+[evasion](https://github.com/NoLearningManJustExecute/agent-detection-gauntlet/blob/main/results/evasion/evasion.json),
+[per-technique](https://github.com/NoLearningManJustExecute/agent-detection-gauntlet/blob/main/results/coverage/coverage.json). The tables are in
 [results-baseline.md](results-baseline.md), [results-evasion.md](results-evasion.md) and
-[the dashboard](dashboard.html). Read [limitations.md](limitations.md) with this page.
+[the dashboard](https://NoLearningManJustExecute.github.io/agent-detection-gauntlet/dashboard.html). Read [limitations.md](limitations.md) with this page.
 
 Rates read numerator/denominator = value. Brackets on a rate are Wilson 95% intervals. Brackets on a
 change are percentile bootstrap intervals over variant groups, seed 1337, 10000 resamples. Evasion
@@ -122,8 +122,9 @@ bar was fixed before any held-out result and has not moved. It tests one rule st
 strict question, and the tier and combined figures above are the better description of the system.
 
 Part of this is the denominator. A rule's recall here is over all succeeded attacks, including ones it
-was never aimed at. On the attacks of its own technique, ADG-0014 scores 4/4 and ADG-0006 scores 2/2, on
-very few traces.
+was never aimed at. On the attacks of its own technique, ADG-0014 scores 4/4, and ADG-0006 scores 2/2 on
+three of its four techniques and 2/6 on ASI01, on very few traces. It cuts both ways: ADG-0012, the best
+rule overall, scores 0/13 on its own AML.T0053 attacks, so its recall comes from elsewhere.
 
 Attack variants read differently on that table, with two rules at 3/5. That is 5 traces, too few to mean
 anything, and [coverage.md](coverage.md) flags it.
