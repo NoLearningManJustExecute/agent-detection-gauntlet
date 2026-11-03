@@ -81,23 +81,23 @@
     },
     {
       "path": "src/agent_detection_gauntlet/catalog/atlas.yaml",
-      "sha256": "4714214f9f5e0f6ab72d77ba11354e0b39e8a406d76ddda61b3df1fded27165e"
+      "sha256": "456d913cadcdd61a81c6324553dc5dd45c7c152504d1a60334c7205f4f3161af"
     },
     {
       "path": "src/agent_detection_gauntlet/catalog/owasp_llm.yaml",
-      "sha256": "3704336a1aa0dec894bf433b65f075c5294d6ce253cee4814d871943736934b3"
+      "sha256": "ffee7c8e14c849b7675d3f5d9762e1f2c11cb121c59241dea7a9d2dd3f10a3d2"
     },
     {
       "path": "src/agent_detection_gauntlet/catalog/owasp_agentic.yaml",
-      "sha256": "569d64624a9e663f8e1db5d94c78bf619eaf4ef24fecc078557128103501712e"
+      "sha256": "3924b4b1d5cc036d7738bb8f9a2d317f3dd0c817a55fa7b0855f752782688c8b"
     },
     {
       "path": "src/agent_detection_gauntlet/catalog/attack.yaml",
-      "sha256": "91c5240dbc5eb9b86cd2434b6c95fa65cae9b3490b218bc1f74d0b38ff116e9d"
+      "sha256": "3d5dfdac1c141771a8de9f8378f3280bac1ffcb9fc1869cf56b833f01e7beb59"
     },
     {
       "path": "src/agent_detection_gauntlet/catalog/attack_classes.yaml",
-      "sha256": "b404b631110c990ba3709ea5ab6b093a80b037862c73fb19cbb990e45917ffdb"
+      "sha256": "82e5cdd40bfc0d21e01ea8f38d6c4eb57b7cd1091aaafebf41b4dd9cb38295be"
     }
   ],
   "populations": [
@@ -1555,7 +1555,7 @@
           "reason": "not_attempted"
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [
@@ -1681,7 +1681,7 @@
           "reason": "no_successful_attacks"
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [
@@ -1883,7 +1883,7 @@
           "reason": null
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [
@@ -2019,7 +2019,7 @@
           "reason": "not_attempted"
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [],
@@ -2371,7 +2371,7 @@
           "reason": "not_attempted"
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [
@@ -2497,7 +2497,7 @@
           "reason": "no_successful_attacks"
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [
@@ -2635,7 +2635,7 @@
           "reason": "not_attempted"
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [
@@ -2822,7 +2822,7 @@
           "reason": null
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [
@@ -3035,7 +3035,7 @@
           "reason": "recall_too_low"
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [
@@ -3281,7 +3281,7 @@
           "reason": null
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [
@@ -3420,7 +3420,7 @@
           "reason": null
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [
@@ -3558,7 +3558,7 @@
           "reason": "not_attempted"
         }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "classes": [],
@@ -3679,7 +3679,7 @@
           "reason": null
         }
       ],
-      "verified": false
+      "verified": true
     }
   ],
   "thresholds": {

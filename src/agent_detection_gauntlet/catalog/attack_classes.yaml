@@ -4,9 +4,9 @@
 # It ties techniques to classes for per-technique counts and the "no successful attacks" reason.
 # It cannot make a technique covered: that comes from the rules' pooled results only.
 #
-# IDs are in this repository's catalog vocabulary. The source lab numbers OWASP LLM differently
-# (its LLM03 is Excessive Agency and its LLM04 is Supply Chain; the catalog here has LLM06 and
-# LLM03), so those two are matched by title. Phase 7 verifies every ID against the primary source.
+# IDs are in this repository's catalog vocabulary. The source lab uses the OWASP LLM 2026 numbers
+# (its LLM03 is Excessive Agency and its LLM04 is Supply Chain); the catalog here uses the 2025
+# numbers (LLM06 and LLM03), so those two are matched by title. See docs/mappings.md.
 # not_in_catalog holds source IDs, as written there, that no rule here may reference.
 source_commit: c67352a45ac23a1b833242459a15f0723ed933fc
 classes:

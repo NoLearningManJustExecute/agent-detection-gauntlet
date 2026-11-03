@@ -84,7 +84,7 @@ detected. Definitions are in [metrics.md](metrics.md).
   detection files and metrics reports. Neither contains wall-clock time.
 - Every metrics report records the sha256 of each input file, the package version, and the git
   commit and dirty flag of the code that produced it.
-- Agent runs in later phases use a fixed seed and a fixed temperature, with N runs per case, so
+- Agent runs use a fixed seed and a fixed temperature, with N runs per case, so
   that variation between runs can be measured rather than hidden.
 
 ## Synthetic fixtures
@@ -98,10 +98,9 @@ they should, and metrics are computed correctly. Numbers produced from them are 
 
 Rules map to MITRE ATLAS, the OWASP Top 10 for LLM Applications, the OWASP Top 10 for Agentic
 Applications and, when the agent performs a host action, MITRE ATT&CK. Every mapping ID must
-exist in the catalog shipped with the package. Catalog entries are marked unverified until they
-have been checked against the primary source, and the validator warns about every unverified ID.
-Verification is scheduled for Phase 7. Until then, mappings are working references, not
-authoritative claims.
+exist in the catalog shipped with the package. An entry is marked verified only when its ID and
+title matched the primary source, and the validator warns about every unverified ID. The result of
+that check is in [mappings.md](mappings.md).
 
 ## Hypotheses and findings
 
@@ -115,16 +114,14 @@ threshold. The computed table is [coverage.md](coverage.md).
 
 ## Limitations
 
-These limits apply now or are expected, and will be restated next to any published result.
+The full list is in [limitations.md](limitations.md). These are the ones about method.
 
-- **Phase 0 has no real data.** Only synthetic fixtures exist. Real traces arrive in Phase 1
-  from instrumented attack and defense lab environments.
-- **Single-author corpus.** Attacks, benign traces and rules will be written by one author. Blind
+- **Single-author corpus.** Attacks, benign traces and rules were written by one author. Blind
   spots in that author's view of attacks and normal use carry into the results. The held-out
   split guards against overfitting to specific traces, not against a shared bias in how all
   traces were made.
-- **Limited model coverage.** Later phases plan to use a single local model. Results may not
-  transfer to other models or agent frameworks.
+- **Limited model coverage.** Every run used a single local model. Results may not transfer to
+  other models or agent frameworks.
 - **Guardrails are labeled per trace.** A trace is labeled with guardrails on or off as a whole,
   not per action.
 - **OpenTelemetry GenAI conventions are experimental.** Every GenAI attribute used has stability
@@ -133,6 +130,5 @@ These limits apply now or are expected, and will be restated next to any publish
 - **Provenance depends on instrumentation.** Sequence rules that follow `adg.content.ref` are
   only as good as the provenance links recorded. Missing links cause misses; overly broad links
   cause false positives.
-- **No live SIEM validation.** Rules run only in this engine. Converted artifacts planned for
-  later phases will be labeled as not validated on a live SIEM.
-- **Mapping IDs are unverified** until Phase 7, as described above.
+- **No live SIEM validation.** Rules run only in this engine. Converted artifacts are labeled as
+  not validated on a live SIEM.

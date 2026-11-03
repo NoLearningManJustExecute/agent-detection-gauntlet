@@ -248,8 +248,8 @@ During validation:
 - A mapping ID in the catalog with `verified: false` is a **warning**. Warnings do not fail
   validation.
 
-All current catalog entries are unverified. Verification against the primary sources is
-scheduled for Phase 7, so every rule currently produces one warning per mapping ID.
+Verification against the primary sources is
+recorded in [mappings.md](mappings.md), and a rule warns once per mapping to an unverified ID.
 
 `gauntlet rules-doc` renders [detections.md](detections.md) from the rule files, and CI fails when
 the two disagree.
@@ -399,5 +399,4 @@ How it reads:
   trusted retrieval. `syn-0003` has an untrusted retrieval and a send, but the send does not
   derive from the retrieval. Neither may fire. The rule also names dev traces, listed in the file.
 - **Mappings** reference one ID per framework family that applies. No host action occurs, so
-  `attack` is empty. All three IDs are currently unverified catalog entries, so validation
-  prints three warnings.
+  `attack` is empty. A mapping to an unverified catalog entry prints a validation warning.

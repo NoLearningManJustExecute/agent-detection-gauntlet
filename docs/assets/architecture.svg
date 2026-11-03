@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1008 320" width="1008" height="320" role="img" aria-label="Pipeline: Lab to Telemetry to Detection to Evaluation">
+<style>
+.bg{fill:#161e2b}.box{fill:#1e2735;stroke:#34414f}.flow{stroke:#8b5cf6;stroke-width:2}
+.tip{fill:#8b5cf6}
+.title{fill:#e8eef5;font:700 20px "Segoe UI", Helvetica, Arial, sans-serif}
+.head{fill:#c4b5fd;font:700 17px "Segoe UI", Helvetica, Arial, sans-serif}
+.item{fill:#e8eef5;font:13px "Segoe UI", Helvetica, Arial, sans-serif}
+.foot{fill:#a9b6c4;font:13px "Segoe UI", Helvetica, Arial, sans-serif}
+</style>
+<rect class="bg" width="1008" height="320" rx="14"/>
+<text class="title" x="24" y="42">agent-detection-gauntlet: from a live agent to a measured result</text>
+<rect class="box" x="24" y="70" width="210" height="190" rx="10"/>
+<text class="head" x="40" y="104">Lab</text>
+<text class="item" x="40" y="140">Instrumented agent</text>
+<text class="item" x="40" y="178">Local model, temperature 0</text>
+<text class="item" x="40" y="216">Attacks and benign work</text>
+<line class="flow" x1="238" y1="165" x2="262" y2="165"/>
+<path class="tip" d="M260 159 L270 165 L260 171 Z"/>
+<rect class="box" x="274" y="70" width="210" height="190" rx="10"/>
+<text class="head" x="290" y="104">Telemetry</text>
+<text class="item" x="290" y="140">Schema-checked JSONL traces</text>
+<text class="item" x="290" y="178">Ground truth in separate labels</text>
+<text class="item" x="290" y="216">Frozen dev and held-out split</text>
+<line class="flow" x1="488" y1="165" x2="512" y2="165"/>
+<path class="tip" d="M510 159 L520 165 L510 171 Z"/>
+<rect class="box" x="524" y="70" width="210" height="190" rx="10"/>
+<text class="head" x="540" y="104">Detection</text>
+<text class="item" x="540" y="140">Content rules</text>
+<text class="item" x="540" y="178">Sequence rules</text>
+<text class="item" x="540" y="216">Behavior rules</text>
+<line class="flow" x1="738" y1="165" x2="762" y2="165"/>
+<path class="tip" d="M760 159 L770 165 L760 171 Z"/>
+<rect class="box" x="774" y="70" width="210" height="190" rx="10"/>
+<text class="head" x="790" y="104">Evaluation</text>
+<text class="item" x="790" y="140">Rules hashed and pre-registered</text>
+<text class="item" x="790" y="178">Baseline, evasion, coverage</text>
+<text class="item" x="790" y="216">Golden JSON, re-scored in CI</text>
+<text class="foot" x="24" y="294">Rules are written on dev only. The engine never reads labels. Reports and the dashboard are generated from the golden JSON.</text>
+</svg>

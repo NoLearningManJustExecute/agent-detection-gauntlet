@@ -306,14 +306,16 @@ def _limitations(report: CoverageReport) -> list[str]:
         "not the technique its delivery uses. So a technique shown with no successful attacks can "
         "still have rules firing on related attacks. The source also ties obfuscated variants to "
         "AML.T0068, which no rule here maps to and the class map does not hold.",
-        "- **Two OWASP LLM numberings.** This repository's catalog and the source threat model "
-        "both say 2026 but number OWASP LLM differently: the source, which records checking its "
-        "IDs against OWASP, has LLM03 as Excessive Agency and LLM06 as Unbounded Consumption. The "
-        "class map matches by title, so read each LLM row here by the title beside it, not by "
-        "number. Rule files are frozen and keep their IDs. Phase 7 checks every ID against the "
-        "primary source.",
-        "- **Framework mappings are unverified** until Phase 7. A rule's mapping is its author's "
-        "claim about the technique it detects, and coverage inherits that claim.",
+        "- **Two OWASP LLM numberings.** This repository's catalog uses the 2025 edition's "
+        "numbers, which the rule files were written with. The source threat model uses the 2026 "
+        "edition's, where LLM03 is Excessive Agency and LLM06 is Unbounded Consumption. The class "
+        "map matches by title. Rule files are frozen and keep their IDs. See "
+        "[mappings.md](mappings.md).",
+        "- **One catalog mapping is unverified.** AML.T0057 matches ATLAS through 2026.09 but is "
+        "absent from 2026.10. Every other catalog ID matched its primary source. IDs quoted from "
+        "the source threat model are outside the catalog; see [mappings.md](mappings.md). A rule's "
+        "mapping is still its author's claim about the technique it detects, and coverage inherits "
+        "that claim.",
         "- **Single model and single-author corpus**, as in the baseline and evasion reports.",
         "",
     ]

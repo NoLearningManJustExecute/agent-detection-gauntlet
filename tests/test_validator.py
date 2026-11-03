@@ -57,9 +57,9 @@ def test_valid_rule_passes(tmp_path: Path, fixture_dir: Path) -> None:
 def test_repository_rules_validate_against_repository_fixtures() -> None:
     report = validate_rules(RULES_DIR, RULE_FIXTURES, load_catalog())
     assert report.ok, [issue.render() for issue in report.errors]
-    # Catalog entries ship unverified until Phase 7 checks them, so each mapping warns.
-    mappings = [loaded.rule.mappings.by_family() for loaded in report.rules]
-    assert len(report.warnings) == sum(len(ids) for family in mappings for ids in family.values())
+    # AML.T0057 did not match the current ATLAS release, so each mapping to it warns.
+    assert report.warnings
+    assert all("AML.T0057" in issue.render() for issue in report.warnings)
 
 
 def test_schema_error(tmp_path: Path, fixture_dir: Path) -> None:
@@ -143,9 +143,14 @@ def test_catalog_loads_with_expected_entries() -> None:
     assert catalog.lookup("atlas", "AML.T0051.001") is not None
     assert catalog.lookup("owasp_agentic", "ASI01") is not None
     assert catalog.lookup("attack", "T1059") is None
-    assert all(
-        not item.verified for family in catalog.families.values() for item in family.values()
-    )
+    unverified = [
+        item.id
+        for family in catalog.families.values()
+        for item in family.values()
+        if not item.verified
+    ]
+    assert unverified == ["AML.T0057"]
+    assert all(item.checked for family in catalog.families.values() for item in family.values())
 
 
 @pytest.mark.parametrize(

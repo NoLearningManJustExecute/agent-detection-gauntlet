@@ -1,23 +1,27 @@
-# OWASP Top 10 for Agentic Applications entries referenced by rules.
-# verified stays false until the entry is checked against the primary source (Phase 7).
+# OWASP Top 10 for Agentic Applications entries referenced by rules, checked in Phase 7 against
+# the published document, Version 2026, December 2025. docs/mappings.md lists the result.
 entries:
   - id: ASI01
     name: Agent Goal Hijack
     url: https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
     version: "2026"
-    verified: false
+    verified: true
+    checked: "2026-11-02"
   - id: ASI02
     name: Tool Misuse and Exploitation
     url: https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
     version: "2026"
-    verified: false
+    verified: true
+    checked: "2026-11-02"
   - id: ASI03
     name: Identity and Privilege Abuse
     url: https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
     version: "2026"
-    verified: false
+    verified: true
+    checked: "2026-11-02"
   - id: ASI04
     name: Agentic Supply Chain Vulnerabilities
     url: https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
     version: "2026"
-    verified: false
+    verified: true
+    checked: "2026-11-02"

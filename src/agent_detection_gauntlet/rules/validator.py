@@ -108,7 +108,7 @@ def check_mappings(report: ValidationReport, catalog: Catalog) -> None:
                 elif not entry.verified:
                     report.warning(
                         loaded.path,
-                        f"{family} id {mapping_id} ({entry.name}) is not yet verified "
+                        f"{family} id {mapping_id} ({entry.name}) is not verified "
                         "against the primary source",
                     )
 

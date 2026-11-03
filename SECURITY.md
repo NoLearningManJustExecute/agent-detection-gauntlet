@@ -5,8 +5,9 @@
 agent-detection-gauntlet is a research tool. It measures how well detection rules hold up
 against evasive attacks on AI agents. It is not a security product.
 
-- During Phase 0 the repository ships synthetic data only. The fixture traces contain made-up
-  prompt injection text and example addresses. They describe no real system or person.
+- The traces come from an agent running in a sandbox against synthetic fixtures. They contain
+  prompt injection text and example addresses on reserved domains, and describe no real system
+  or person.
 - The tool is intended for local use only. It reads and writes local files. It is not designed,
   tested or supported for production monitoring, and it has no live SIEM integration.
 

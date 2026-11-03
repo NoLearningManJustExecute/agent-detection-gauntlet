@@ -1,28 +1,37 @@
-# MITRE ATLAS techniques referenced by rules.
-# verified stays false until the entry is checked against the primary source (Phase 7).
+# MITRE ATLAS techniques referenced by rules, checked against the primary source in Phase 7.
+# verified is true only when the id and title matched. docs/mappings.md lists the result.
 entries:
   - id: AML.T0051.001
     name: "LLM Prompt Injection: Indirect"
     url: https://atlas.mitre.org/techniques/AML.T0051.001
-    version: "2026.09"
-    verified: false
+    version: "2026.10"
+    verified: true
+    checked: "2026-11-02"
   - id: AML.T0051.000
     name: "LLM Prompt Injection: Direct"
     url: https://atlas.mitre.org/techniques/AML.T0051.000
-    version: "5.6.0"
-    verified: false
+    version: "2026.10"
+    verified: true
+    checked: "2026-11-02"
   - id: AML.T0053
-    name: "AI Agent Tool Invocation"
+    name: AI Agent Tool Invocation
     url: https://atlas.mitre.org/techniques/AML.T0053
-    version: "5.6.0"
-    verified: false
+    version: "2026.10"
+    verified: true
+    checked: "2026-11-02"
   - id: AML.T0054
-    name: "LLM Jailbreak"
+    name: LLM Jailbreak
     url: https://atlas.mitre.org/techniques/AML.T0054
-    version: "5.6.0"
-    verified: false
+    version: "2026.10"
+    verified: true
+    checked: "2026-11-02"
   - id: AML.T0057
-    name: "LLM Data Leakage"
-    url: https://atlas.mitre.org/techniques/AML.T0057
-    version: "5.6.0"
+    name: LLM Data Leakage
+    url: https://github.com/mitre-atlas/atlas-data/blob/main/dist/v6/ATLAS-2026.09.yaml
+    version: "2026.09"
     verified: false
+    checked: "2026-11-02"
+    note: >-
+      Present through ATLAS 2026.09, absent from 2026.10, whose changelog lists AML.T0085.002 as
+      moved from it. It does not match the current release, so it stays unverified. Rule files are
+      frozen and keep the id, and the validator warns on each one.

@@ -1,8 +1,9 @@
 # MITRE ATT&CK techniques referenced by rules. Used only when the agent performs a host action.
-# verified stays false until the entry is checked against the primary source (Phase 7).
+# Checked against the primary source in Phase 7. docs/mappings.md lists the result.
 entries:
   - id: T1005
-    name: "Data from Local System"
+    name: Data from Local System
     url: https://attack.mitre.org/techniques/T1005/
-    version: "v18"
-    verified: false
+    version: "v20"
+    verified: true
+    checked: "2026-11-02"
