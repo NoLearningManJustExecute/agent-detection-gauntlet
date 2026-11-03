@@ -16,6 +16,10 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 
+# In this file only the leak-guard job holds the private list, because it runs no code from the change. Every
+# other job installs and runs this change's code, so its guard steps get a placeholder whose hash
+# matches nothing and apply generic rules. Committed files get the private list from leak-guard, and
+# the release workflow scans dist with it.
 jobs:
   leak-guard:
     runs-on: ubuntu-latest
@@ -197,7 +201,10 @@ jobs:
           echo "detections and metrics are byte-identical across runs"
       - name: Leak guard on generated outputs
         env:
-          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+          LEAK_DENYLIST: |
+            salt 00
+            maxwords 1
+            hash 0000000000000000000000000000000000000000000000000000000000000000
         run: python tools/leak_guard.py --text out/detections.jsonl --text out/metrics.json
 
   corpus:
@@ -394,7 +401,10 @@ jobs:
           fi
       - name: Leak guard on results
         env:
-          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+          LEAK_DENYLIST: |
+            salt 00
+            maxwords 1
+            hash 0000000000000000000000000000000000000000000000000000000000000000
         run: |
           for file in docs/preregistration.json docs/preregistration.md \
             docs/preregistration-evasion.json results/evasion/evasion.json \
@@ -423,7 +433,10 @@ jobs:
         run: gauntlet coverage claims
       - name: Leak guard on generated coverage
         env:
-          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+          LEAK_DENYLIST: |
+            salt 00
+            maxwords 1
+            hash 0000000000000000000000000000000000000000000000000000000000000000
         run: python tools/leak_guard.py --text results/coverage/coverage.json --text docs/coverage.md
 
   # Reads golden results, catalogs and the diagram source, never a held-out trace.
@@ -446,7 +459,10 @@ jobs:
         run: gauntlet publish numbers
       - name: Leak guard on generated documents
         env:
-          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+          LEAK_DENYLIST: |
+            salt 00
+            maxwords 1
+            hash 0000000000000000000000000000000000000000000000000000000000000000
         run: |
           python tools/leak_guard.py --text docs/dashboard.html --text docs/mappings.md \
             --text docs/assets/architecture.svg --text docs/assets/architecture.yaml \
@@ -477,7 +493,10 @@ jobs:
         run: test -z "$(git ls-files dist)"
       - name: Leak guard on dist
         env:
-          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+          LEAK_DENYLIST: |
+            salt 00
+            maxwords 1
+            hash 0000000000000000000000000000000000000000000000000000000000000000
         run: |
           test -n "$(find dist -type f)"
           find dist -type f | sort | while read -r file; do

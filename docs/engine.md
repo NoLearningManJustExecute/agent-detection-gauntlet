@@ -246,4 +246,4 @@ The same rules and traces always produce the same detections file, byte for byte
   and `within_seconds` reduce the search space.
 - `match`, `threshold` and `baseline` are linear in the number of events.
 - `regex` cost depends on the pattern. Python's `re` has no backtracking limit; see
-  [SECURITY.md](../SECURITY.md).
+  [SECURITY.md](https://github.com/NoLearningManJustExecute/agent-detection-gauntlet/blob/main/SECURITY.md).

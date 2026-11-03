@@ -28,4 +28,4 @@ Rules and traces are treated as trusted local input.
 
 ## Reporting a vulnerability
 
-Private vulnerability reporting will be enabled when the repository goes public. Until then, the repository is private.
+Report vulnerabilities privately through GitHub: the Security tab, then "Report a vulnerability".

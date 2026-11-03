@@ -6,13 +6,17 @@ Measures which AI-agent detection techniques stay effective when attackers delib
 
 Live demo: https://NoLearningManJustExecute.github.io/agent-detection-gauntlet/
 
+Third of a trilogy: [rag-attack-lab](https://github.com/NoLearningManJustExecute/rag-attack-lab)
+attacks, [agent-risk-framework](https://github.com/NoLearningManJustExecute/agent-risk-framework)
+defends, and this one detects.
+
 > Which AI-agent detection techniques remain effective when attackers intentionally evade them?
 
 **Homoglyph and zero-width characters blind keyword detection, while sequence and behavior detection
 hold.**
 
 Pooled over payload mutations, guardrails off. Recall is over attacks that still succeeded, which was
-138/396 runs:
+138/396 runs, or 57 distinct succeeded traces in 17 groups:
 
 | Tier | Recall under payload mutation | Same attacks, unmutated | Change [95% interval] |
 |---|---|---|---|
@@ -35,7 +39,7 @@ Pooled over payload mutations, guardrails off. Recall is over attacks that still
   drops under mutation.
 
 14 rules, 887 scored live evasion runs, one local model. Read the [findings](docs/findings.md) and the
-[limitations](docs/limitations.md), or browse the [dashboard](docs/dashboard.html).
+[limitations](docs/limitations.md), or browse the [dashboard](https://NoLearningManJustExecute.github.io/agent-detection-gauntlet/dashboard.html).
 
 ![Pipeline: lab, telemetry, detection, evaluation](docs/assets/architecture.svg)
 
@@ -104,7 +108,8 @@ GAUNTLET_SCORING_HELDOUT=1 gauntlet validation score --check
 GAUNTLET_SCORING_HELDOUT=1 gauntlet evasion score --check
 ```
 
-Traces are committed, so scoring needs no model. Producing new traces needs the source lab and a local
+Traces are committed, so scoring needs no model. Producing new traces needs the source lab,
+[agent-risk-framework](https://github.com/NoLearningManJustExecute/agent-risk-framework), and a local
 Ollama, which this repository does not include.
 
 ## Repository layout

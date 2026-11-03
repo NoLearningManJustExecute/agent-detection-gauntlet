@@ -167,5 +167,8 @@ cutoff <40 hex commit>
   earlier comments by others. That residual is accepted: closing it needs a per-author filter in
   this guard.
 - Pull requests from forks get no secrets, so the CI guard fails closed (exit 2) on them.
+- In `ci.yml`, only the `leak-guard` job holds the private list, and it runs the base branch's
+  guard. Jobs that run the change's own code scan their outputs with a placeholder list, so generic
+  rules only.
 - Every push to main runs in its own concurrency group, so no pushed range is cancelled or
   skipped while queued. Pull request runs replace each other.
