@@ -287,7 +287,14 @@ def test_landing_relative_links_exist() -> None:
 
 
 def test_ci_gives_the_private_list_only_to_the_job_that_runs_no_change_code() -> None:
-    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    workflow = yaml.safe_load(text)
+    # Anywhere in the other jobs, not only in env: `run` and `with` could carry it too.
+    assert "secrets" not in text.split("  typecheck:\n")[1].lower()
+    assert all(
+        "pip install" not in str(step.get("run", ""))
+        for step in workflow["jobs"]["leak-guard"]["steps"]
+    )
     holders = [
         (name, step)
         for name, job in workflow["jobs"].items()

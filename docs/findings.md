@@ -124,7 +124,8 @@ strict question, and the tier and combined figures above are the better descript
 Part of this is the denominator. A rule's recall here is over all succeeded attacks, including ones it
 was never aimed at. On the attacks of its own technique, ADG-0014 scores 4/4, and ADG-0006 scores 2/2 on
 three of its four techniques and 2/6 on ASI01, on very few traces. It cuts both ways: ADG-0012, the best
-rule overall, scores 0/13 on its own AML.T0053 attacks, so its recall comes from elsewhere.
+rule overall, scores 0/13 on its own AML.T0053 attacks on clean traces, so its recall comes from
+elsewhere.
 
 Attack variants read differently on that table, with two rules at 3/5. That is 5 traces, too few to mean
 anything, and [coverage.md](coverage.md) flags it.

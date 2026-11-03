@@ -16,7 +16,7 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 
-# Only the leak-guard job holds the private list, because it runs no code from the change. Every
+# In this file only the leak-guard job holds the private list, because it runs no code from the change. Every
 # other job installs and runs this change's code, so its guard steps get a placeholder whose hash
 # matches nothing and apply generic rules. Committed files get the private list from leak-guard, and
 # the release workflow scans dist with it.
