@@ -1,7 +1,21 @@
 # Demo script and recording guide
 
-A two-minute walk through the result. No video is committed here; this is the script and the checklist
-for making one. Nothing below needs a model or reads a held-out trace.
+A two-minute walk through the result, with the script and the checklist for recording one. Nothing in the
+script below needs a model or reads a held-out trace.
+
+## Published recording
+
+The GIF in the README is a separate, shorter take, made from [assets/demo.tape](assets/demo.tape). It needs
+no model, but it does read held-out traces. `gauntlet evasion verify` loads them for its integrity checks and
+writes no log row. `gauntlet evasion score --check` with `GAUNTLET_SCORING_HELDOUT=1` re-scores them with the
+frozen rules and compares the answer to the committed results. Each such run appends a row to
+[heldout-log.md](heldout-log.md). The rows from making this recording are committed there. No rule changed.
+
+Run locally, as in the clip, `evasion verify` checks the rules against the registration. The comparison with
+the registration as first committed runs in CI.
+
+The table at the end of the clip comes from [demo/evasion_table.py](demo/evasion_table.py), which only prints
+numbers from `results/evasion/evasion.json`.
 
 ## Before recording
 

@@ -82,3 +82,6 @@ its own discarded runner.
 | 2026-11-02T18:52:53Z | 647f171a3007 | evasion score --check | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48, datasets/evasion/k16, datasets/evasion/k24, datasets/evasion/k48 |
 | 2026-11-02T19:17:31Z | 3f7ca55e5b93 | evasion score --check | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48, datasets/evasion/k16, datasets/evasion/k24, datasets/evasion/k48 |
 | 2026-11-02T19:17:38Z | 3f7ca55e5b93 | validation score --check | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48 |
+| 2026-11-03T16:40:52Z | 7ffdf3c556fd | evasion score --check | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48, datasets/evasion/k16, datasets/evasion/k24, datasets/evasion/k48 |
+| 2026-11-03T16:42:35Z | 7ffdf3c556fd | evasion score --check | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48, datasets/evasion/k16, datasets/evasion/k24, datasets/evasion/k48 |
+| 2026-11-03T16:44:00Z | 7ffdf3c556fd | evasion score --check | datasets/corpus/heldout/k16, datasets/corpus/heldout/k24, datasets/corpus/heldout/k48, datasets/evasion/k16, datasets/evasion/k24, datasets/evasion/k48 |

@@ -56,9 +56,18 @@ byte, so you can check these numbers rather than trust me.
 
 ## Demo
 
-No recording is published yet. The script is in [docs/demo.md](docs/demo.md).
+![Recording: the rules are checked against their registration, the traces are re-scored byte for byte, and the recall table prints](docs/assets/demo.gif)
 
-<!-- GIF goes here. Owner: record with a generic shell prompt, no paths, no email in git config on screen, and scrub frames before posting. -->
+Recall on attacks that still succeeded, guardrails off, mutated against the same base scenarios unmutated:
+
+- **Content keyword rules collapse under homoglyphs:** 10/19 to 0/21.
+- **Behavior rules mostly hold under homoglyphs:** 10/19 to 9/21. The change is -0.098 [-0.167, +0.000], so
+  the interval allows a real loss, and 9/21 still misses most of these attacks.
+- **All tiers together still drop,** pooled over payload mutations: 39/48 to 28/57. This does not show that
+  the rules hold.
+
+The clip re-scores recorded traces, so no model runs in it and no attack happens on screen. Tape:
+[docs/assets/demo.tape](docs/assets/demo.tape). Walkthrough script: [docs/demo.md](docs/demo.md).
 
 ## How it works
 
@@ -98,8 +107,9 @@ The full list is in [docs/limitations.md](docs/limitations.md).
 
 The thesis is byte-exact re-scoring, so the toolchain is pinned, not ranged:
 
-- **Python:** 3.12.15 in the CI jobs that install packages, on `ubuntu-latest`. The checks below also pass on 3.12.10 on Windows, except
-  the two held-out re-scores, which I only run in CI.
+- **Python:** 3.12.15 in the CI jobs that install packages, on `ubuntu-latest`. The read-only checks below also pass on 3.12.10 on Windows.
+  CI is the gate for the two held-out re-scores; the demo clip also shows `evasion score --check` passing on
+  Windows.
 - **Packages:** `requirements-lock.txt` holds every package, direct and transitive, at one exact version
   with sha256 hashes. `pyproject.toml` pins the direct ones to the same versions and the build backend to
   `setuptools==84.2.1` (exact version, not hash-checked). A test fails if the two disagree.
