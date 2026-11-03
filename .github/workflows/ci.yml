@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"
       # The gate runs the guard from the default branch (pull requests) or the previous main
       # (pushes), so a change cannot weaken the guard that checks it. It falls back to this
       # change's copy only when that commit has no guard with range support (the first install,
@@ -114,11 +114,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: requirements-lock.txt
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements-lock.txt
+          python -m pip install --no-deps -e .
       - name: mypy strict
         run: mypy --strict src tests tools
 
@@ -130,11 +132,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: requirements-lock.txt
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements-lock.txt
+          python -m pip install --no-deps -e .
       - name: Ruff check
         run: ruff check .
       - name: Ruff format
@@ -148,11 +152,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: requirements-lock.txt
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements-lock.txt
+          python -m pip install --no-deps -e .
       - name: Pytest with coverage (fails under 90 percent)
         run: pytest --cov --cov-report=term-missing
 
@@ -164,11 +170,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: requirements-lock.txt
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements-lock.txt
+          python -m pip install --no-deps -e .
       - name: Schema drift check
         run: gauntlet export-schemas --check
       - name: Validate traces
@@ -216,11 +224,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: requirements-lock.txt
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements-lock.txt
+          python -m pip install --no-deps -e .
       - name: Validate corpus traces (every split and K)
         run: |
           for dir in datasets/corpus/dev/k* datasets/corpus/heldout/k*; do
@@ -273,11 +283,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: requirements-lock.txt
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements-lock.txt
+          python -m pip install --no-deps -e .
       # The registration must equal the commit that first added it, and results must name its
       # hashes. Before a registration exists this only checks that no results exist either.
       # Once one is on the base it may not be deleted, and neither may the golden file.
@@ -422,11 +434,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: requirements-lock.txt
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements-lock.txt
+          python -m pip install --no-deps -e .
       - name: Regenerate coverage and fail on any difference
         run: gauntlet coverage build --check
       - name: No doc claims coverage the JSON does not support
@@ -448,11 +462,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: requirements-lock.txt
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements-lock.txt
+          python -m pip install --no-deps -e .
       - name: Regenerate the dashboard, mapping table and diagram and fail on any difference
         run: gauntlet publish build --check
       - name: Every published rate is in a results JSON
@@ -477,11 +493,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: requirements-lock.txt
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements-lock.txt
+          python -m pip install --no-deps -e .
       - name: Lint native rules
         run: gauntlet lint-rules rules
       - name: Build dist twice and compare
@@ -511,10 +529,14 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: requirements-lock.txt
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r requirements-lock.txt
+          python -m pip install --no-deps -e .
+      - name: Installed set has no broken requirements
+        run: python -m pip check
       - name: pip-audit
         run: pip-audit --skip-editable
